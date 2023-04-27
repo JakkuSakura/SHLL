@@ -347,7 +347,7 @@ pub struct Impl {
 
 impl Ast for Impl {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildStruct {
     pub name: Expr, // either Ident or Struct
     pub field: KwArgs,

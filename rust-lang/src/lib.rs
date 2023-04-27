@@ -17,6 +17,8 @@ impl Ast for RawExprMacro {
         true
     }
 }
+impl_panic_serde!(RawExprMacro);
+
 #[derive(Debug, Clone)]
 pub struct RawItemMacro {
     raw: syn::ItemMacro,
@@ -26,7 +28,7 @@ impl Ast for RawItemMacro {
         true
     }
 }
-impl_panic_serde!(RawMacro);
+impl_panic_serde!(RawItemMacro);
 #[derive(Debug, Clone)]
 pub struct RawUse {
     raw: syn::ItemUse,
