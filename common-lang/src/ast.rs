@@ -98,6 +98,7 @@ pub struct Block {
 impl Ast for Block {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// unit is both type and value
 pub struct Unit;
 
 impl Ast for Unit {
@@ -339,6 +340,14 @@ pub struct Struct {
 impl Ast for Struct {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Impl {
+    pub name: Expr,
+    pub defs: Vec<Def>,
+}
+
+impl Ast for Impl {}
+
+#[derive(Debug, Clone)]
 pub struct BuildStruct {
     pub name: Expr, // either Ident or Struct
     pub field: KwArgs,
