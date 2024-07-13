@@ -7,10 +7,9 @@ macro_rules! shll_parse_item {
 }
 #[macro_export]
 macro_rules! shll_parse_items {
-    ($($tt:tt;)*) => {{
-        let items: Vec<syn::Item> = vec![];
-        $(items.push(syn::parse_quote!($tt;));)*
-        rust_lang::parser::RustParser::new().parse_items(items)?
+    ($($tt:tt)*) => {{
+        let file: syn::File = syn::parse_quote!($($tt)*);
+        rust_lang::parser::RustParser::new().parse_items(file.items)?
     }};
 }
 #[macro_export]
