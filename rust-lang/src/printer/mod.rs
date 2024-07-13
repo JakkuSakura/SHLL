@@ -255,7 +255,7 @@ impl RustPrinter {
         } else {
             quote!()
         };
-        let ret_type = &sig.ret;
+        let ret_type = &sig.ret_ty;
         let ret = self.print_return_type(ret_type)?;
         let param_names: Vec<_> = sig
             .params
@@ -323,7 +323,7 @@ impl RustPrinter {
             .iter()
             .map(|x| self.print_type_value(x))
             .try_collect()?;
-        let node = &fun.ret;
+        let node = &fun.ret_ty;
         let ret = self.print_return_type(node)?;
         Ok(quote!(
             fn(#(#args), *) #ret

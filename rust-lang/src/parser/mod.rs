@@ -85,7 +85,7 @@ fn parse_type_value(t: syn::Type) -> Result<AstType> {
                     .map(parse_type_value)
                     .try_collect()?,
                 generics_params: vec![],
-                ret: item::parse_return_type(f.output)?.into(),
+                ret_ty: item::parse_return_type(f.output)?.into(),
             }
             .into(),
         )
@@ -197,7 +197,7 @@ pub fn parse_fn_sig(sig: syn::Signature) -> Result<FunctionSignature> {
             .map(item::parse_fn_arg)
             .try_collect()?,
         generics_params,
-        ret: item::parse_return_type(sig.output)?,
+        ret_ty: item::parse_return_type(sig.output)?,
     })
 }
 pub fn parse_trait_item(f: syn::TraitItem) -> Result<AstItem> {

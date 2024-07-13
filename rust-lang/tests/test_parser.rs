@@ -33,7 +33,7 @@ fn test_parse_fn() -> Result<()> {
                         ty: AstType::Primitive(TypePrimitive::i64())
                     }],
                     generics_params: vec![],
-                    ret: AstType::Primitive(TypePrimitive::i64())
+                    ret_ty: AstType::Primitive(TypePrimitive::i64())
                 },
                 body: block.into(),
             },

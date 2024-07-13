@@ -356,7 +356,7 @@ impl InterpreterPass {
             name: node.sig.name.clone(),
             params,
             generics_params: node.generics_params.clone(),
-            ret: self.interpret_type(&node.ret, &sub)?,
+            ret_ty: self.interpret_type(&node.ret_ty, &sub)?,
         };
 
         Ok(ValueFunction {
@@ -484,12 +484,20 @@ impl InterpreterPass {
     }
 
     pub fn interpret_let(&self, node: &StmtLet, ctx: &SharedScopedContext) -> Result<Value> {
-        let value = self.interpret_expr(&node.value, ctx)?;
-        ctx.insert_value(
-            node.pat.as_ident().context("Only supports ident")?.as_str(),
-            value.clone(),
-        );
-        Ok(value)
+        if let Some(init) = &node.init {
+            let value = self.interpret_expr(&init, ctx)?;
+            ctx.insert_value(
+                node.pat.as_ident().context("Only supports ident")?.as_str(),
+                value.clone(),
+            );
+            Ok(value)
+        } else {
+            ctx.insert_value(
+                node.pat.as_ident().context("Only supports ident")?.as_str(),
+                Value::undefined(),
+            );
+            Ok(Value::unit())
+        }
     }
 
     pub fn interpret_stmt(

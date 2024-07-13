@@ -79,7 +79,7 @@ impl AstExpr {
     }
     pub fn block(block: ExprBlock) -> AstExpr {
         if block.stmts.len() == 0 {
-            return block.ret.map(|x| *x).unwrap_or(AstExpr::unit());
+            return block.expr.map(|x| *x).unwrap_or(AstExpr::unit());
         }
 
         AstExpr::Block(block)

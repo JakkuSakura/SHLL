@@ -231,16 +231,24 @@ impl FoldOptimizer {
     }
 
     pub fn optimize_let(&self, let_: StmtLet, ctx: &SharedScopedContext) -> Result<StmtLet> {
-        let value = self.optimize_expr(let_.value, ctx)?;
-        ctx.insert_expr(
-            let_.pat.as_ident().context("Only supports ident")?.clone(),
-            value.clone(),
-        );
+        if let Some(init) = &let_.init {
+            let init = self.optimize_expr(init.clone(), ctx)?;
+            let value = self.pass.try_evaluate_expr(&init, ctx)?;
+            ctx.insert_expr(
+                let_.pat.as_ident().context("Only supports ident")?.clone(),
+                value.clone(),
+            );
 
-        Ok(StmtLet {
-            pat: let_.pat.clone(),
-            value,
-        })
+            Ok(StmtLet {
+                pat: let_.pat.clone(),
+                init: Some(value.into()),
+            })
+        } else {
+            Ok(StmtLet {
+                pat: let_.pat.clone(),
+                init: None,
+            })
+        }
     }
     pub fn optimize_stmt(&self, stmt: BlockStmt, ctx: &SharedScopedContext) -> Result<BlockStmt> {
         match stmt {
