@@ -10,7 +10,7 @@ pub type BItem = Box<AstItem>;
 common_enum! {
     /// Item is an syntax tree node that "declares" a thing without returning a value
     pub enum AstItem {
-        Module(Module),
+        Module(AstModule),
         DefStruct(DefStruct),
         DefEnum(DefEnum),
         DefType(DefType),
@@ -87,7 +87,7 @@ impl AstItem {
             _ => None,
         }
     }
-    pub fn as_module(&self) -> Option<&Module> {
+    pub fn as_module(&self) -> Option<&AstModule> {
         match self {
             Self::Module(module) => Some(module),
             _ => None,
@@ -175,7 +175,7 @@ impl ItemChunkExt for ItemChunk {
     }
 }
 common_struct! {
-    pub struct Module {
+    pub struct AstModule {
         pub name: Ident,
         pub items: ItemChunk,
         pub visibility: Visibility,

@@ -409,15 +409,11 @@ fn parse_custom_type_expr(m: syn::TypeMacro) -> Result<AstExpr> {
 }
 
 pub fn parse_file(path: PathBuf, file: syn::File) -> Result<AstFile> {
-    let module = Module {
-        name: Ident::new("__file__"),
-        items: file.items.into_iter().map(item::parse_item).try_collect()?,
-        visibility: Visibility::Public,
-    };
-    Ok(AstFile { path, module })
+    let items = file.items.into_iter().map(item::parse_item).try_collect()?;
+    Ok(AstFile { path, items })
 }
-pub fn parse_module(m: syn::ItemMod) -> Result<Module> {
-    Ok(Module {
+pub fn parse_module(m: syn::ItemMod) -> Result<AstModule> {
+    Ok(AstModule {
         name: parse_ident(m.ident),
         items: m
             .content
@@ -479,7 +475,7 @@ impl RustParser {
     pub fn parse_file(&self, path: PathBuf, code: syn::File) -> Result<AstFile> {
         parse_file(path, code)
     }
-    pub fn parse_module(&self, code: syn::ItemMod) -> Result<Module> {
+    pub fn parse_module(&self, code: syn::ItemMod) -> Result<AstModule> {
         parse_module(code)
     }
     pub fn parse_type_value(&self, code: syn::Type) -> Result<AstType> {
@@ -488,10 +484,10 @@ impl RustParser {
 }
 
 impl AstDeserializer for RustParser {
-    fn deserialize_tree(&self, code: &str) -> Result<AstTree> {
+    fn deserialize_tree(&self, code: &str) -> Result<AstNode> {
         let code: syn::File = parse_str(code)?;
         let path = PathBuf::from("__file__");
-        self.parse_file(path, code).map(AstTree::File)
+        self.parse_file(path, code).map(AstNode::File)
     }
 
     fn deserialize_expr(&self, code: &str) -> Result<AstExpr> {

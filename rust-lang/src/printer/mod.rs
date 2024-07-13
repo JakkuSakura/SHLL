@@ -329,7 +329,7 @@ impl RustPrinter {
             fn(#(#args), *) #ret
         ))
     }
-    pub fn print_module(&self, m: &Module) -> Result<TokenStream> {
+    pub fn print_module(&self, m: &AstModule) -> Result<TokenStream> {
         let stmts = self.print_items_chunk(&m.items)?;
 
         let mod_name = format_ident!("{}", m.name.as_str());
@@ -558,20 +558,20 @@ impl RustPrinter {
     }
 
     pub fn print_file(&self, file: &AstFile) -> Result<TokenStream> {
-        let items = self.print_items_chunk(&file.module.items)?;
+        let items = self.print_items_chunk(&file.items)?;
         Ok(quote!(#items))
     }
-    pub fn print_tree(&self, node: &AstTree) -> Result<TokenStream> {
+    pub fn print_tree(&self, node: &AstNode) -> Result<TokenStream> {
         match node {
-            AstTree::Item(n) => self.print_item(n),
-            AstTree::Expr(n) => self.print_expr(n),
-            AstTree::File(n) => self.print_file(n),
+            AstNode::Item(n) => self.print_item(n),
+            AstNode::Expr(n) => self.print_expr(n),
+            AstNode::File(n) => self.print_file(n),
         }
     }
 }
 
 impl AstSerializer for RustPrinter {
-    fn serialize_tree(&self, node: &AstTree) -> Result<String> {
+    fn serialize_tree(&self, node: &AstNode) -> Result<String> {
         self.print_tree(node)
             .and_then(|x| self.maybe_rustfmt_token_stream(&x))
     }
@@ -596,7 +596,7 @@ impl AstSerializer for RustPrinter {
             .and_then(|x| self.maybe_rustfmt_token_stream(&x))
     }
 
-    fn serialize_module(&self, node: &Module) -> Result<String> {
+    fn serialize_module(&self, node: &AstModule) -> Result<String> {
         self.print_module(node)
             .and_then(|x| self.maybe_rustfmt_token_stream(&x))
     }

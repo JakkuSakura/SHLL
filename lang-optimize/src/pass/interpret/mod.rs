@@ -25,9 +25,8 @@ impl InterpreterPass {
         }
     }
 
-    pub fn interpret_module(&self, node: &Module, ctx: &SharedScopedContext) -> Result<Value> {
+    pub fn interpret_items(&self, node: &ItemChunk, ctx: &SharedScopedContext) -> Result<Value> {
         let result: Vec<_> = node
-            .items
             .iter()
             .map(|x| self.interpret_item(x, ctx))
             .try_collect()?;
@@ -467,7 +466,7 @@ impl InterpreterPass {
     pub fn interpret_item(&self, node: &AstItem, ctx: &SharedScopedContext) -> Result<Value> {
         debug!("Interpreting {}", self.serializer.serialize_item(&node)?);
         match node {
-            AstItem::Module(n) => self.interpret_module(n, ctx),
+            AstItem::Module(n) => self.interpret_items(&n.items, ctx),
             AstItem::DefFunction(n) => self.interpret_def_function(n, ctx).map(|_| Value::unit()),
             AstItem::DefStruct(n) => self.interpret_def_struct(n, ctx).map(|_| Value::unit()),
             AstItem::DefEnum(n) => self.interpret_def_enum(n, ctx).map(|_| Value::unit()),
@@ -509,11 +508,11 @@ impl InterpreterPass {
         }
     }
 
-    pub fn interpret_tree(&self, node: &AstTree, ctx: &SharedScopedContext) -> Result<Value> {
+    pub fn interpret_tree(&self, node: &AstNode, ctx: &SharedScopedContext) -> Result<Value> {
         match node {
-            AstTree::Item(item) => self.interpret_item(item, ctx),
-            AstTree::Expr(expr) => self.interpret_expr(expr, ctx),
-            AstTree::File(file) => self.interpret_module(&file.module, ctx),
+            AstNode::Item(item) => self.interpret_item(item, ctx),
+            AstNode::Expr(expr) => self.interpret_expr(expr, ctx),
+            AstNode::File(file) => self.interpret_items(&file.items, ctx),
         }
     }
 }
