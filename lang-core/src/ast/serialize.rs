@@ -1,6 +1,6 @@
 use crate::ast::{
-    AstExpr, AstFile, AstItem, AstModule, AstNode, BExpr, BlockStmt, DefFunction, ExprBlock,
-    ExprInvoke,
+    AstExpr, AstFile, AstItem, AstModule, AstNode, BExpr, BlockStmt, ExprBlock, ExprInvoke,
+    ItemDefFunction,
 };
 use crate::ast::{AstType, Value, ValueFunction};
 use common::*;
@@ -73,7 +73,7 @@ pub trait AstSerializer: Send + Sync {
     fn serialize_value_function(&self, node: &ValueFunction) -> Result<String> {
         bail!("not implemented: serialize_function")
     }
-    fn serialize_def_function(&self, node: &DefFunction) -> Result<String> {
+    fn serialize_def_function(&self, node: &ItemDefFunction) -> Result<String> {
         bail!("not implemented: serialize_def_function")
     }
 }

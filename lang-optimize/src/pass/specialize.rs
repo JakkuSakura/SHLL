@@ -23,7 +23,11 @@ impl SpecializePass {
         }
     }
 
-    pub fn specialize_import(&self, import: Import, _ctx: &SharedScopedContext) -> Result<Import> {
+    pub fn specialize_import(
+        &self,
+        import: ItemImport,
+        _ctx: &SharedScopedContext,
+    ) -> Result<ItemImport> {
         Ok(import)
     }
 
@@ -152,7 +156,7 @@ impl SpecializePass {
         Ok(AstExpr::Block(
             ExprBlock {
                 stmts: vec![BlockStmt::Item(
-                    AstItem::DefFunction(DefFunction {
+                    AstItem::DefFunction(ItemDefFunction {
                         attrs: vec![],
                         name: new_name.clone(),
                         ty: None,

@@ -153,7 +153,11 @@ impl FoldOptimizer {
         Ok(expr)
     }
 
-    pub fn optimize_import(&self, import: Import, _ctx: &SharedScopedContext) -> Result<Import> {
+    pub fn optimize_import(
+        &self,
+        import: ItemImport,
+        _ctx: &SharedScopedContext,
+    ) -> Result<ItemImport> {
         Ok(import)
     }
 
@@ -357,16 +361,20 @@ impl FoldOptimizer {
 
     pub fn optimize_def_function(
         &self,
-        mut def: DefFunction,
+        mut def: ItemDefFunction,
         ctx: &SharedScopedContext,
-    ) -> Result<DefFunction> {
+    ) -> Result<ItemDefFunction> {
         let value = self.optimize_func(def._to_value(), ctx)?;
         def.body = value.body;
         def.sig = value.sig;
 
         Ok(def)
     }
-    pub fn prescan_def_function(&self, def: &DefFunction, ctx: &SharedScopedContext) -> Result<()> {
+    pub fn prescan_def_function(
+        &self,
+        def: &ItemDefFunction,
+        ctx: &SharedScopedContext,
+    ) -> Result<()> {
         match def.name.as_str() {
             _ => {
                 debug!(

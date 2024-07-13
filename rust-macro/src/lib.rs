@@ -68,7 +68,9 @@ fn specialize_inner(code: impl Optimizee) -> Result<TokenStream> {
 #[proc_macro]
 pub fn specialize(input: TokenStream) -> TokenStream {
     let input: syn::File = syn::parse(input.into()).unwrap();
-    let input = RustParser::new().parse_file("".into(), input).unwrap();
+    let input = RustParser::new()
+        .parse_file_content("".into(), input)
+        .unwrap();
     specialize_inner(input).unwrap().into()
 }
 

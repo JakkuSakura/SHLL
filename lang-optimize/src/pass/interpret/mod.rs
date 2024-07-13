@@ -85,7 +85,7 @@ impl InterpreterPass {
             kind => bail!("Could not invoke {:?}", kind),
         }
     }
-    pub fn interpret_import(&self, _node: &Import, _ctx: &SharedScopedContext) -> Result<()> {
+    pub fn interpret_import(&self, _node: &ItemImport, _ctx: &SharedScopedContext) -> Result<()> {
         Ok(())
     }
     pub fn interpret_block(&self, node: &ExprBlock, ctx: &SharedScopedContext) -> Result<Value> {
@@ -209,26 +209,30 @@ impl InterpreterPass {
 
     pub fn interpret_def_function(
         &self,
-        def: &DefFunction,
+        def: &ItemDefFunction,
         ctx: &SharedScopedContext,
     ) -> Result<()> {
         let name = &def.name;
         ctx.insert_value_with_ctx(name.clone(), Value::Function(def._to_value()));
         Ok(())
     }
-    pub fn interpret_def_struct(&self, def: &DefStruct, ctx: &SharedScopedContext) -> Result<()> {
+    pub fn interpret_def_struct(
+        &self,
+        def: &ItemDefStruct,
+        ctx: &SharedScopedContext,
+    ) -> Result<()> {
         ctx.insert_value_with_ctx(def.name.clone(), AstType::Struct(def.value.clone()).into());
         Ok(())
     }
-    pub fn interpret_def_enum(&self, def: &DefEnum, ctx: &SharedScopedContext) -> Result<()> {
+    pub fn interpret_def_enum(&self, def: &ItemDefEnum, ctx: &SharedScopedContext) -> Result<()> {
         ctx.insert_value_with_ctx(def.name.clone(), AstType::Enum(def.value.clone()).into());
         Ok(())
     }
-    pub fn interpret_def_type(&self, def: &DefType, ctx: &SharedScopedContext) -> Result<()> {
+    pub fn interpret_def_type(&self, def: &ItemDefType, ctx: &SharedScopedContext) -> Result<()> {
         ctx.insert_value_with_ctx(def.name.clone(), Value::Type(def.value.clone()));
         Ok(())
     }
-    pub fn interpret_def_const(&self, def: &DefConst, ctx: &SharedScopedContext) -> Result<()> {
+    pub fn interpret_def_const(&self, def: &ItemDefConst, ctx: &SharedScopedContext) -> Result<()> {
         ctx.insert_value_with_ctx(def.name.clone(), def.value.clone());
         Ok(())
     }

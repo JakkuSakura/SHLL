@@ -67,7 +67,7 @@ impl RustPrinter {
         let name = self.print_ident(&i.ident);
         Ok(quote!(#mut_ #name))
     }
-    pub fn print_trait_bound(&self, n: &DefTrait) -> Result<TokenStream> {
+    pub fn print_trait_bound(&self, n: &ItemDefTrait) -> Result<TokenStream> {
         let name = self.print_ident(&n.name);
         let bounds = self.print_type_bounds(&n.bounds)?;
         Ok(quote!(
@@ -339,7 +339,7 @@ impl RustPrinter {
             }
         ))
     }
-    pub fn print_import(&self, node: &Import) -> Result<TokenStream> {
+    pub fn print_import(&self, node: &ItemImport) -> Result<TokenStream> {
         let vis = self.print_vis(node.visibility);
         let segments = node
             .path
@@ -596,6 +596,10 @@ impl AstSerializer for RustPrinter {
             .and_then(|x| self.maybe_rustfmt_token_stream(&x))
     }
 
+    fn serialize_file(&self, node: &AstFile) -> Result<String> {
+        self.print_file(node)
+            .and_then(|x| self.maybe_rustfmt_token_stream(&x))
+    }
     fn serialize_module(&self, node: &AstModule) -> Result<String> {
         self.print_module(node)
             .and_then(|x| self.maybe_rustfmt_token_stream(&x))
@@ -620,7 +624,7 @@ impl AstSerializer for RustPrinter {
         self.print_value_function(node, Visibility::Private)
             .and_then(|x| self.maybe_rustfmt_token_stream(&x))
     }
-    fn serialize_def_function(&self, node: &DefFunction) -> Result<String> {
+    fn serialize_def_function(&self, node: &ItemDefFunction) -> Result<String> {
         self.print_def_function(node)
             .and_then(|x| self.maybe_rustfmt_token_stream(&x))
     }

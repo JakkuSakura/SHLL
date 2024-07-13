@@ -1,4 +1,4 @@
-use crate::ast::{get_threadlocal_serializer, AstType, BValue, Value, ValueUnit};
+use crate::ast::{get_threadlocal_serializer, AstType, BItem, BValue, Value, ValueUnit};
 use crate::common_enum;
 use crate::id::{Ident, Locator, Path};
 use crate::utils::anybox::{AnyBox, AnyBoxable};
@@ -43,7 +43,8 @@ common_enum! {
         Paren(ExprParen),
         SelfType(ExprSelfType),
         Range(ExprRange),
-
+        /// for items in dynamic languages
+        Item(BItem),
         Any(AnyBox),
     }
 
