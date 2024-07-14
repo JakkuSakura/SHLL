@@ -75,7 +75,7 @@ impl RustPrinter {
         ))
     }
 
-    pub fn print_field(&self, field: &FieldTypeValue) -> Result<TokenStream> {
+    pub fn print_field(&self, field: &StructuralField) -> Result<TokenStream> {
         let name = self.print_ident(&field.name);
         let ty = self.print_type_value(&field.value)?;
         Ok(quote!(pub #name: #ty ))
@@ -364,7 +364,7 @@ impl RustPrinter {
             .try_collect()?;
         Ok(quote!(#name { #(#kwargs), * }))
     }
-    pub fn print_struct_expr(&self, s: &ExprInitStruct) -> Result<TokenStream> {
+    pub fn print_struct_expr(&self, s: &ExprStruct) -> Result<TokenStream> {
         let name = self.print_expr(&s.name.get())?;
         let kwargs: Vec<_> = s
             .fields

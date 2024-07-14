@@ -121,13 +121,13 @@ common_enum! {
     }
 }
 common_struct! {
-    pub struct ExprInitStruct {
+    pub struct ExprStruct {
         pub name: BExpr, // TypeExpr
         pub fields: Vec<FieldValue>,
     }
 }
 common_struct! {
-    pub struct ExprInitStructural {
+    pub struct ExprStructural {
         pub fields: Vec<FieldValue>,
     }
 }
