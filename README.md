@@ -160,6 +160,30 @@ type Foo = struct {
 }
 Foo["/api"]
 
+// fn LinkedList(comptime T: type) type {
+//   return struct {
+//     pub const Node = struct {
+//     prev: ? * Node = null,
+//     next: ? * Node = null,
+//     data: T,
+//     };
+//     
+//     first: ? * Node = null,
+//     last: ? * Node = null,
+//     len: usize = 0,
+//   };
+// }
+
+type LinkedList<T> = struct {
+    type Node = struct {
+    prev: ? * Node = null,
+    next: ? * Node = null,
+    data: T,
+    };
+    first: ? * Node = null,
+    last: ? * Node = null,
+    len: usize = 0,
+}
 ```
 
 ## References
