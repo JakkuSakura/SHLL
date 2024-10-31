@@ -95,7 +95,7 @@ Hope to bring some of typescript's type system to SHLL. It verifies and infer ty
 solid types in Rust.
 It should also be available as a cli tool and standalone library.
 
-```text
+```rust
 // structural typing, solid type
 type Foo = struct {
     a: i32,
@@ -120,23 +120,45 @@ type RW = impl Write | impl Write
 // intersection type
 type RW = impl Read + impl Write
 type RW = impl Read & impl Write
-// list compression
-type Foo2 = struct {
-    key, value for i in Foo.types()
-}
-// type function
-type fn NestedVec(ty: Type, n: usize) -> Type {
-    if n == 0 {
-        ty
-    } else {
-        Vec<NestedVec(ty, n-1)>
-    }
-}
 
+// building a struct
+type Foo2 = Type<{
+    type mut T = struct {}
+    T.a = bool;
+    T.b = i32;
+    T
+}>
+
+// type function
+type NestedVec<T, const n: usize> = Type<{
+    if n == 0 {
+        T
+    } else {
+        Vec < NestedVec < T, n - 1 >>
+    }
+}>
 // typeof
 type Foo = typeof(1)
 // literal types
 type Foo = 1
+
+// type alias
+type Foo = i32
+
+// if const
+fn foo() {
+    if const { true } {
+        println!("true")
+    } else {
+        println!("false")
+    }
+}
+// type dict
+type Foo = struct {
+    "/api": EndpointApi,
+    "/user": EndpointUser,
+}
+Foo["/api"]
 
 ```
 
@@ -153,3 +175,4 @@ https://hirrolot.github.io/posts/why-static-languages-suffer-from-complexity.htm
 - [ ] Use miette for error handling
 - [ ] Refer to rustc's demand-driven compilation. i.e. use trait instead of passes where possible. this it already WIP
 - [ ] Use tree-sitter for CST
+- [ ] TypeScript's type system
