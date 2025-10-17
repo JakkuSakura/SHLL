@@ -5,10 +5,7 @@ edition = "2021"
 
 [dependencies]
 fp-core = { path = "../fp-core" }
-fp-rust = { path = "../fp-rust" }
 tracing = "0.1"
-syn = "2"
-proc-macro2 = "1"
 
 [features]
 default = []
