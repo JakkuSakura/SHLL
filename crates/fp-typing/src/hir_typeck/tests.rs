@@ -295,6 +295,42 @@ fn impl_header_obligation_is_keyed_by_impl_def_id() {
     });
 }
 
+#[test]
+fn repeated_generic_call_parameter_refines_self_binding() {
+    let package = Rc::new(RefCell::new(hir::HirPackage::new(test_pkg())));
+    let executor = fp_core::executor::CompilerExecutor::new().handle();
+    let checker = HirTypeChecker::new(package, None, None, executor);
+    let parameter = ty::ParamTy {
+        index: 7,
+        name: "T".into(),
+    };
+    let parameter_ty = Ty {
+        kind: TyKind::Param(parameter.clone()),
+    };
+    let callable = Ty {
+        kind: TyKind::FnPtr(ty::PolyFnSig {
+            binder: ty::Binder {
+                value: ty::FnSig {
+                    inputs: vec![Box::new(parameter_ty.clone()), Box::new(parameter_ty.clone())],
+                    output: Box::new(parameter_ty),
+                    c_variadic: false,
+                    unsafety: ty::Unsafety::Normal,
+                    abi: ty::Abi::Rust,
+                },
+                bound_vars: Vec::new(),
+            },
+        }),
+    };
+    let actual = Ty::float(ty::FloatTy::F32);
+    let checker = checker.borrow();
+    let (substitutions, output) = checker
+        .instantiate_call(&callable, &[actual.clone(), actual.clone()], None)
+        .expect("generic call instantiation should succeed")
+        .expect("callable signature should instantiate");
+    assert_eq!(substitutions.get(&parameter), Some(&actual));
+    assert_eq!(output, actual);
+}
+
 /// Wraps a bare `hir::TypeExpr` in `let value: <ty>;` (no initializer)
 /// the same way `f16_and_f128_type_paths_resolve_as_primitive_floats`
 /// does, so `check_type_expr`'s handling of a single `TypeExprKind` can
