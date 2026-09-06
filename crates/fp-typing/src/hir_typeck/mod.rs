@@ -846,13 +846,21 @@ impl HirTypeChecker {
                     let assoc_types = scope.impl_assoc_types(&impl_item.items).await?;
                     let mut scope = scope.with_assoc_types(assoc_types);
                     for item in &impl_item.items {
+                        scope.current_item_path = Some(format!(
+                            "{}::{}",
+                            self.current_item_path.as_deref().unwrap_or_default(),
+                            item.name
+                        ));
                         match &item.kind {
                             hir::ImplItemKind::Method(function) => {
                                 scope.check_function(function).await?
                             }
                             hir::ImplItemKind::AssocConst(constant) => {
-                                scope.check_type_expr(&constant.ty).await?;
-                                scope.check_body(&constant.body).await?;
+                                let declared_ty = scope.check_type_expr(&constant.ty).await?;
+                                scope
+                                    .with_expected_expr_type(declared_ty)
+                                    .check_body(&constant.body)
+                                    .await?;
                             }
                             hir::ImplItemKind::AssocType(_) => {
                                 // Already type-checked into `assoc_types` above.
@@ -1031,7 +1039,13 @@ impl HirTypeChecker {
             let ty = scope.check_type_expr(&param.ty).await?;
             scope.bind_pattern(&param.pat, ty).await?;
         }
-        scope.check_expr(&body.value).await
+        match scope.expected_expr_type.clone() {
+            Some(expected) => scope
+                .with_expected_expr_type(expected)
+                .check_expr(&body.value)
+                .await,
+            None => scope.check_expr(&body.value).await,
+        }
     }
 
     async fn check_function_body(
