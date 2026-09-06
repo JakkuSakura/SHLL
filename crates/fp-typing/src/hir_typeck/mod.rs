@@ -1301,7 +1301,11 @@ impl HirTypeChecker {
                         // segment as the method name the same way,
                         // not assume the trait is always exactly
                         // `segments[0]`.
-                        if path.segments().len() >= 2 {
+                        let has_qualified_tail = match path {
+                            hir::QPath::Resolved(_, resolved) => resolved.segments.len() >= 2,
+                            hir::QPath::TypeRelative(_, _) => true,
+                        };
+                        if has_qualified_tail {
                             if let Some(receiver_ty) = arg_types.first().cloned() {
                                 let method_name = path.segments().last().unwrap().ident.clone();
                                 // The receiver may itself still be a
@@ -1315,7 +1319,22 @@ impl HirTypeChecker {
                                 // instead, exactly like `T::method(..)`
                                 // does when the base segment itself
                                 // names the parameter.
-                                let sig = if let hir::Res::Def(trait_id) = path.res_ref() {
+                                // A TypeRelative path stores the deferred
+                                // associated item with `Res::Error`; the
+                                // trait identity lives on its resolved
+                                // receiver path.
+                                let trait_res = match path {
+                                    hir::QPath::Resolved(_, resolved) => Some(resolved.res_ref()),
+                                    hir::QPath::TypeRelative(receiver, _) => {
+                                        match &receiver.kind {
+                                            hir::TypeExprKind::Path(receiver_path) => {
+                                                Some(receiver_path.res_ref())
+                                            }
+                                            _ => None,
+                                        }
+                                    }
+                                };
+                                let sig = if let Some(hir::Res::Def(trait_id)) = trait_res {
                                     self.trait_qualified_method_signature(
                                         trait_id,
                                         &method_name,
@@ -1358,7 +1377,11 @@ impl HirTypeChecker {
                 // priority when one exists.
                 if matches!(callee_ty.kind, TyKind::Error(_)) {
                     if let hir::ExprKind::Path(path) = &callee.kind {
-                        if path.segments().len() >= 2 {
+                        let has_qualified_tail = match path {
+                            hir::QPath::Resolved(_, resolved) => resolved.segments.len() >= 2,
+                            hir::QPath::TypeRelative(_, _) => true,
+                        };
+                        if has_qualified_tail {
                             // The ambient expected type is itself only
                             // a real receiver to search with when it's
                             // an actual type — if it's `TyKind::Error`
@@ -1373,7 +1396,18 @@ impl HirTypeChecker {
                                 .filter(|ty| !matches!(ty.kind, TyKind::Error(_)));
                             if let Some(receiver_ty) = expected {
                                 let method_name = path.segments().last().unwrap().ident.clone();
-                                let sig = if let hir::Res::Def(trait_id) = path.res_ref() {
+                                let trait_res = match path {
+                                    hir::QPath::Resolved(_, resolved) => Some(resolved.res_ref()),
+                                    hir::QPath::TypeRelative(receiver, _) => {
+                                        match &receiver.kind {
+                                            hir::TypeExprKind::Path(receiver_path) => {
+                                                Some(receiver_path.res_ref())
+                                            }
+                                            _ => None,
+                                        }
+                                    }
+                                };
+                                let sig = if let Some(hir::Res::Def(trait_id)) = trait_res {
                                     self.trait_qualified_method_signature(
                                         trait_id,
                                         &method_name,
@@ -1524,17 +1558,27 @@ impl HirTypeChecker {
                 }
                 if let hir::ExprKind::Path(path) = &callee.kind {
                     if let hir::Res::Def(def_id) = path.res_ref() {
-                        let args = self
-                            .generic_call_args(def_id.clone(), &substitutions)?
-                            .or_else(|| self.callable_output_args(&callee_ty, &substitutions));
-                        if let Some(args) = args {
-                            self.package().record_generic_call_arg(
-                                expr.hir_id.clone(),
-                                GenericCallResolution {
-                                    def_id: def_id.clone(),
-                                    args,
-                                },
-                            );
+                        // Do not manufacture a second generic-inference
+                        // diagnostic when an earlier argument already has
+                        // an error type. Rustc treats that as recovery and
+                        // leaves the substitution unresolved for later
+                        // phases; only report inference failure for a
+                        // genuinely well-typed call.
+                        if !arg_types.iter().any(ty_contains_error)
+                            && !matches!(callee_ty.kind, TyKind::Error(_))
+                        {
+                            let args = self
+                                .generic_call_args(def_id.clone(), &substitutions)?
+                                .or_else(|| self.callable_output_args(&callee_ty, &substitutions));
+                            if let Some(args) = args {
+                                self.package().record_generic_call_arg(
+                                    expr.hir_id.clone(),
+                                    GenericCallResolution {
+                                        def_id: def_id.clone(),
+                                        args,
+                                    },
+                                );
+                            }
                         }
                     }
                 }
@@ -2199,12 +2243,25 @@ impl HirTypeChecker {
         Box::pin(async move {
             let lhs_literal = matches!(lhs.kind, hir::ExprKind::Literal(hir::Lit::Integer(_)));
             let rhs_literal = matches!(rhs.kind, hir::ExprKind::Literal(hir::Lit::Integer(_)));
-            let lhs = self.check_expr(lhs).await?;
-            let rhs = self.check_expr(rhs).await?;
+            let lhs_float_literal = matches!(lhs.kind, hir::ExprKind::Literal(hir::Lit::Float(_)));
+            let rhs_float_literal = matches!(rhs.kind, hir::ExprKind::Literal(hir::Lit::Float(_)));
+            let mut lhs = self.check_expr(lhs).await?;
+            let mut rhs = self.check_expr(rhs).await?;
+            // Untyped float literals receive the surrounding numeric type,
+            // just as rustc's coercion/inference does. Binary expressions do
+            // not otherwise provide an expected-type context to either
+            // operand, so propagate a concrete float operand explicitly.
+            if lhs_float_literal && matches!(rhs.kind, TyKind::Float(_)) {
+                lhs = rhs.clone();
+            } else if rhs_float_literal && matches!(lhs.kind, TyKind::Float(_)) {
+                rhs = lhs.clone();
+            }
             let integer_literal = (lhs_literal
                 && matches!(rhs.kind, TyKind::Int(_) | TyKind::Uint(_)))
                 || (rhs_literal && matches!(lhs.kind, TyKind::Int(_) | TyKind::Uint(_)));
-            if !integer_literal {
+            let float_literal = (lhs_float_literal && matches!(rhs.kind, TyKind::Float(_)))
+                || (rhs_float_literal && matches!(lhs.kind, TyKind::Float(_)));
+            if !integer_literal && !float_literal {
                 match op {
                     hir::BinOp::And | hir::BinOp::Or => {
                         self.require_same_at(&lhs, &Ty::bool(), span)?;
@@ -2247,8 +2304,21 @@ impl HirTypeChecker {
             let value_ty = self.check_expr(value).await?;
             Ok(match op {
                 hir::UnOp::Not => {
-                    self.require_same_at(&value_ty, &Ty::bool(), span)?;
-                    Ty::bool()
+                    match &value_ty.kind {
+                        // Rust's `!` is defined for both boolean and integer
+                        // primitives. Boolean negation returns `bool`; the
+                        // bitwise integer forms preserve their operand type.
+                        TyKind::Bool => Ty::bool(),
+                        TyKind::Int(_) | TyKind::Uint(_) => value_ty,
+                        TyKind::Error(_) => value_ty,
+                        _ => {
+                            self.record_error_with_span(
+                                "unary `!` requires a boolean or integer operand",
+                                span,
+                            );
+                            self.error_ty("invalid unary `!` operand")
+                        }
+                    }
                 }
                 hir::UnOp::Deref => match value_ty.kind {
                     TyKind::Ref(_, inner, _) | TyKind::RawPtr(ty::TypeAndMut { ty: inner, .. }) => {
@@ -3707,6 +3777,25 @@ impl HirTypeChecker {
     }
 
     async fn expr_path_ty(&mut self, qpath: &hir::QPath) -> Result<Ty> {
+        // A type-relative path may qualify any type expression, not only a
+        // path (`<[T]>::len`, `<(A, B)>::method`, or a projection). Resolve
+        // the receiver first and let associated-item lookup consume the
+        // deferred segment, matching rustc's `QPath::TypeRelative`.
+        if let hir::QPath::TypeRelative(receiver, segment) = qpath
+            && !matches!(receiver.kind, hir::TypeExprKind::Path(_))
+        {
+            let receiver_ty = self.check_type_expr(receiver).await?;
+            if let Some(item_ty) = self
+                .method_declared_signature_at(&receiver_ty, &segment.ident)
+                .await?
+            {
+                return Ok(item_ty);
+            }
+            return Ok(self.error_ty(format!(
+                "associated item `{}` was not found on type {:?}",
+                segment.ident, receiver_ty.kind
+            )));
+        }
         let owned_type_relative_path = match qpath {
             hir::QPath::Resolved(_, _) => None,
             hir::QPath::TypeRelative(receiver, segment) => {
@@ -6046,11 +6135,22 @@ impl HirTypeChecker {
                     }
                 }
                 hir::PatKind::Variant(path) => {
-                    let (_, payloads) = self
-                        .variant_payload_types_for_qpath(path, &adt_ty)
-                        .await?;
-                    if !payloads.is_empty() {
-                        self.record_error("payload variant requires a tuple or struct pattern");
+                    if self.enum_variant_for_qpath(path).await.is_some() {
+                        let (_, payloads) = self
+                            .variant_payload_types_for_qpath(path, &adt_ty)
+                            .await?;
+                        if !payloads.is_empty() {
+                            self.record_error("payload variant requires a tuple or struct pattern");
+                        }
+                    } else {
+                        // A path pattern is not necessarily an enum variant:
+                        // associated constants such as `Self::SIGN_MASK`
+                        // are resolved in the value namespace and validated
+                        // against the scrutinee type during type checking.
+                        let const_ty = self.expr_path_ty(path).await?;
+                        if !matches!(const_ty.kind, TyKind::Error(_)) {
+                            self.require_same_at(&adt_ty, &const_ty, pattern.span())?;
+                        }
                     }
                 }
             }

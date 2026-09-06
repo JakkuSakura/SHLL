@@ -545,17 +545,28 @@ impl HirTypeChecker {
                 if let Some(previous) = substitutions.get(param) {
                     if matches!(&previous.kind, TyKind::Param(previous_param) if previous_param == param)
                     {
-                        return if *previous == actual {
-                            Ok(())
-                        } else if record {
-                            self.require_same(previous, &actual)
-                        } else {
-                            Err(Error::from("speculative type mismatch"))
-                        };
+                        // A self-binding is only a provisional result from
+                        // unifying a parameter with another occurrence of
+                        // itself. A later concrete argument must refine it,
+                        // rather than being compared against `T` as if `T`
+                        // were already rigid (rustc's inference behavior).
+                        if !matches!(&actual.kind, TyKind::Param(actual_param) if actual_param == param)
+                        {
+                            substitutions.insert(param.clone(), actual.clone());
+                        }
+                        return Ok(());
                     }
                     let mut trial = substitutions.clone();
                     trial.remove(param);
-                    self.unify_call_types_impl(previous, &actual, &mut trial, record)?;
+                    let previous = previous.clone();
+                    self.unify_call_types_impl(&previous, &actual, &mut trial, record)?;
+                    // Keep the original parameter binding after checking a
+                    // repeated occurrence. The speculative trial may only
+                    // constrain nested parameters; dropping `param` here
+                    // loses a successful inference for signatures such as
+                    // `fn f<T>(x: T, y: T)`.
+                    let resolved = self.substitute_param_map(&previous, &trial);
+                    trial.insert(param.clone(), resolved);
                     *substitutions = trial;
                 } else {
                     substitutions.insert(param.clone(), actual.clone());
@@ -566,17 +577,21 @@ impl HirTypeChecker {
                 if let Some(previous) = substitutions.get(param) {
                     if matches!(&previous.kind, TyKind::Param(previous_param) if previous_param == param)
                     {
-                        return if *previous == expected {
-                            Ok(())
-                        } else if record {
-                            self.require_same(previous, &expected)
-                        } else {
-                            Err(Error::from("speculative type mismatch"))
-                        };
+                        // See the parameter-on-the-left case above: retain
+                        // the self-binding only until a concrete expected
+                        // type gives the inference variable its value.
+                        if !matches!(&expected.kind, TyKind::Param(expected_param) if expected_param == param)
+                        {
+                            substitutions.insert(param.clone(), expected.clone());
+                        }
+                        return Ok(());
                     }
                     let mut trial = substitutions.clone();
                     trial.remove(param);
-                    self.unify_call_types_impl(previous, &expected, &mut trial, record)?;
+                    let previous = previous.clone();
+                    self.unify_call_types_impl(&previous, &expected, &mut trial, record)?;
+                    let resolved = self.substitute_param_map(&previous, &trial);
+                    trial.insert(param.clone(), resolved);
                     *substitutions = trial;
                 } else {
                     substitutions.insert(param.clone(), expected.clone());
