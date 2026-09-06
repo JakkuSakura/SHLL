@@ -85,6 +85,16 @@ fn hash_source_bytes(hash: &mut u64, bytes: &[u8]) {
     *hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
 }
 
+fn project_cache_dir(root: &Path) -> PathBuf {
+    let root = root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| *name == "target")
+        .and_then(|_| root.parent())
+        .unwrap_or(root);
+    root.join("target/fp")
+}
+
 pub struct RustPackageProvider {
     members: Vec<(String, MemberRoot)>,
     cache: RwLock<HashMap<String, (String, Vec<Item>)>>,
@@ -126,7 +136,7 @@ impl RustPackageProvider {
             let cache_root = root
                 .parent()
                 .unwrap_or(Path::new("."))
-                .join("target/fp-cache");
+                .to_path_buf();
             let name = root
                 .file_stem()
                 .and_then(|s| s.to_str())
@@ -135,7 +145,7 @@ impl RustPackageProvider {
             return Self {
                 members: vec![(name, MemberRoot::File(root))],
                 cache: RwLock::new(HashMap::new()),
-                disk_cache: fp_core::cache::DiskCache::new(cache_root),
+                disk_cache: fp_core::cache::DiskCache::new(project_cache_dir(&cache_root)),
             };
         }
         // `list_cargo_members`, not `list_members`: this provider is
@@ -159,7 +169,7 @@ impl RustPackageProvider {
         Self {
             members,
             cache: RwLock::new(HashMap::new()),
-            disk_cache: fp_core::cache::DiskCache::new(root.join("target/fp-cache")),
+            disk_cache: fp_core::cache::DiskCache::new(project_cache_dir(&root)),
         }
     }
 
@@ -1207,7 +1217,7 @@ fn load_real_std_subcrate(crate_name: &'static str) -> ProviderResult<AstPackage
     let disk_cache = fp_core::cache::DiskCache::new(
         std::env::var_os("FP_CACHE_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("target/fp-cache")),
+            .unwrap_or_else(|| PathBuf::from("target/fp")),
     );
 
     // Real rustc's sysroot vendors `core`/`alloc`/`std` as independent
@@ -1960,7 +1970,7 @@ mod provider_tests {
             .map(|item| (item.module_path.segments.clone(), item.item.clone()))
             .collect::<Vec<_>>();
         serde_json::to_vec(&serializable).unwrap();
-        assert!(root.join("target/fp-cache").is_dir());
+        assert!(root.join("target/fp").is_dir());
 
         let second = RustPackageProvider::new(source.clone())
             .load_package_source(&package_id)
