@@ -642,13 +642,6 @@ impl LoweredProgram {
             })
     }
 
-    /// Every package this run's driver state knows about (dependencies and
-    /// this package itself), as a `AstProgram` — the input every
-    /// `TargetBackend` reads from.
-    fn compiled_workspace(&self) -> Result<std::rc::Rc<fp_core::ast::program::AstProgram>> {
-        Ok(self.driver.state.borrow().ast_program.clone())
-    }
-
     #[allow(dead_code)]
     fn bytecode(&mut self) -> Result<fp_bytecode::BytecodeProgram> {
         self.executor
