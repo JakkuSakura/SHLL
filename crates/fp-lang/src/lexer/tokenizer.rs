@@ -583,6 +583,34 @@ fn number_token(input: &mut &str) -> ModalResult<TokenKind> {
         }
     }
 
+    // Consume a decimal exponent before looking for a type suffix.  The
+    // exponent belongs to the numeric literal (for example `1.0e-34_f128`),
+    // while an alphabetic suffix is handled below.  Only recognize `e`/`E`
+    // when it is followed by an optional sign and at least one digit so that
+    // identifiers such as `1enum` are not swallowed as malformed exponents.
+    if let Some(&(_, marker)) = iter.peek()
+        && (marker == 'e' || marker == 'E')
+    {
+        let mut exponent = iter.clone();
+        exponent.next();
+        if let Some(&(_, sign)) = exponent.peek()
+            && (sign == '+' || sign == '-')
+        {
+            exponent.next();
+        }
+        let has_digit = matches!(exponent.peek(), Some(&(_, ch)) if ch.is_ascii_digit());
+        if has_digit {
+            while let Some(&(idx, ch)) = exponent.peek() {
+                if ch.is_ascii_digit() || ch == '_' {
+                    end = idx + ch.len_utf8();
+                    exponent.next();
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
     // Optional type suffix: allow `_` separator before the suffix (e.g. `4.2_f32`).
     // Suffix proper starts with alphabetic, followed by alphanumeric/underscore.
     let mut suffix_end = end;
@@ -705,5 +733,13 @@ mod tests {
                 .any(|l| l.text == "//y\n" && l.kind == LexemeKind::TriviaLineComment),
             "missing line comment trivia"
         );
+    }
+
+    #[test]
+    fn scientific_literals_are_single_number_tokens() {
+        for source in ["1e10", "6.022e23", "1.0e-34_f128", "1e+3_f32"] {
+            let tokens = snapshot_from_lexer(source);
+            assert_eq!(tokens, vec![(TokenKind::Number, source.to_owned())]);
+        }
     }
 }
