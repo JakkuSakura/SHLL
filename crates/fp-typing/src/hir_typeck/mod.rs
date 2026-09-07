@@ -2297,8 +2297,10 @@ impl HirTypeChecker {
             // The operands of a numeric binary operation constrain each
             // other. Check the right-hand expression in the left-hand
             // type's context so the context reaches nested expressions such
-            // as `1 << 127`, not just a literal appearing directly here.
-            let mut rhs = if matches!(lhs.kind, TyKind::Int(_) | TyKind::Uint(_) | TyKind::Float(_))
+            // as `1 + (2 * 3)`. Shift counts are independent integer
+            // operands in Rust, though, so they must retain their own type.
+            let mut rhs = if !matches!(op, hir::BinOp::Shl | hir::BinOp::Shr)
+                && matches!(lhs.kind, TyKind::Int(_) | TyKind::Uint(_) | TyKind::Float(_))
             {
                 self.with_expected_expr_type(lhs.clone()).check_expr(rhs).await?
             } else {
@@ -2318,7 +2320,13 @@ impl HirTypeChecker {
                 || (rhs_literal && matches!(lhs.kind, TyKind::Int(_) | TyKind::Uint(_)));
             let float_literal = (lhs_float_literal && matches!(rhs.kind, TyKind::Float(_)))
                 || (rhs_float_literal && matches!(lhs.kind, TyKind::Float(_)));
-            if !integer_literal && !float_literal {
+            if matches!(op, hir::BinOp::Shl | hir::BinOp::Shr) {
+                if !matches!(lhs.kind, TyKind::Int(_) | TyKind::Uint(_))
+                    || !matches!(rhs.kind, TyKind::Int(_) | TyKind::Uint(_))
+                {
+                    self.record_error_with_span("shift operands must be integers", span);
+                }
+            } else if !integer_literal && !float_literal {
                 match op {
                     hir::BinOp::And | hir::BinOp::Or => {
                         self.require_same_at(&lhs, &Ty::bool(), span)?;
