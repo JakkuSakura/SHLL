@@ -2294,7 +2294,16 @@ impl HirTypeChecker {
             let lhs_float_literal = matches!(lhs.kind, hir::ExprKind::Literal(hir::Lit::Float(_)));
             let rhs_float_literal = matches!(rhs.kind, hir::ExprKind::Literal(hir::Lit::Float(_)));
             let mut lhs = self.check_expr(lhs).await?;
-            let mut rhs = self.check_expr(rhs).await?;
+            // The operands of a numeric binary operation constrain each
+            // other. Check the right-hand expression in the left-hand
+            // type's context so the context reaches nested expressions such
+            // as `1 << 127`, not just a literal appearing directly here.
+            let mut rhs = if matches!(lhs.kind, TyKind::Int(_) | TyKind::Uint(_) | TyKind::Float(_))
+            {
+                self.with_expected_expr_type(lhs.clone()).check_expr(rhs).await?
+            } else {
+                self.check_expr(rhs).await?
+            };
             // Untyped float literals receive the surrounding numeric type,
             // just as rustc's coercion/inference does. Binary expressions do
             // not otherwise provide an expected-type context to either
@@ -2418,7 +2427,24 @@ impl HirTypeChecker {
     ) -> crate::BoxFuture<'a, Result<Ty>> {
         Box::pin(async move {
             let mut receiver_scope = self.clone();
-            receiver_scope.expected_expr_type = None;
+            receiver_scope.expected_expr_type = match (
+                &receiver.kind,
+                self.expected_expr_type.as_ref(),
+            ) {
+                (
+                    hir::ExprKind::Literal(hir::Lit::Integer(_)),
+                    Some(expected @ Ty {
+                        kind: TyKind::Int(_) | TyKind::Uint(_),
+                    }),
+                )
+                | (
+                    hir::ExprKind::Literal(hir::Lit::Float(_)),
+                    Some(expected @ Ty {
+                        kind: TyKind::Float(_),
+                    }),
+                ) => Some(expected.clone()),
+                _ => None,
+            };
             let receiver_ty = receiver_scope.check_expr(receiver).await?;
             let receiver_ty = self.resolve_infer(&receiver_ty);
             let explicit_generic_args = match generic_args {

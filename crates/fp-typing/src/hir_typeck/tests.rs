@@ -184,6 +184,75 @@ fn records_literal_type_by_hir_id() {
 }
 
 #[test]
+fn numeric_binary_context_reaches_nested_literal_expression() {
+    let nested_lhs_id = hid(14);
+    let nested_rhs_id = hid(15);
+    let expr = hir::Expr {
+        hir_id: hid(7),
+        kind: hir::ExprKind::Binary(
+            hir::BinOp::Ne,
+            Box::new(hir::Expr {
+                hir_id: hid(8),
+                kind: hir::ExprKind::Cast(
+                    Box::new(hir::Expr {
+                        hir_id: hid(9),
+                        kind: hir::ExprKind::Literal(hir::Lit::Integer(0)),
+                        span: fp_core::span::Span::null(),
+                    }),
+                    Box::new(hir::TypeExpr {
+                        hir_id: hid(10),
+                        kind: hir::TypeExprKind::Primitive(TypePrimitive::Int(TypeInt::U128)),
+                        span: fp_core::span::Span::null(),
+                    }),
+                ),
+                span: fp_core::span::Span::null(),
+            }),
+            Box::new(hir::Expr {
+                hir_id: hid(11),
+                kind: hir::ExprKind::Binary(
+                    hir::BinOp::Shl,
+                    Box::new(hir::Expr {
+                        hir_id: nested_lhs_id.clone(),
+                        kind: hir::ExprKind::Literal(hir::Lit::Integer(1)),
+                        span: fp_core::span::Span::null(),
+                    }),
+                    Box::new(hir::Expr {
+                        hir_id: nested_rhs_id.clone(),
+                        kind: hir::ExprKind::Literal(hir::Lit::Integer(127)),
+                        span: fp_core::span::Span::null(),
+                    }),
+                ),
+                span: fp_core::span::Span::null(),
+            }),
+        ),
+        span: fp_core::span::Span::null(),
+    };
+    let item = hir::Item {
+        hir_id: hid(1),
+        def_id: hir::DefId::local(1),
+        visibility: hir::Visibility::Private,
+        kind: hir::ItemKind::Expr(expr),
+        span: fp_core::span::Span::null(),
+    };
+    let mut program = hir::HirPackage::new(test_pkg());
+    program.items.push(item.clone());
+    program.def_map.insert(item.def_id.clone(), item);
+
+    let executor = fp_core::executor::CompilerExecutor::new().handle();
+    let results = executor
+        .run(typecheck_program(program, executor.clone()))
+        .expect("HIR type check");
+    assert_eq!(
+        results.borrow().expr_type(nested_lhs_id),
+        Some(Ty::uint(ty::UintTy::U128))
+    );
+    assert_eq!(
+        results.borrow().expr_type(nested_rhs_id),
+        Some(Ty::uint(ty::UintTy::U128))
+    );
+}
+
+#[test]
 fn records_binding_pattern_type() {
     let pattern = hir::Pat {
         hir_id: hid(8),
