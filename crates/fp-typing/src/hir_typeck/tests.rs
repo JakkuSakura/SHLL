@@ -688,6 +688,161 @@ fn generic_associated_const_path_resolves_before_def_id_lookup() {
 }
 
 #[test]
+fn generic_associated_const_uses_universal_blanket_impl_default() {
+    // `SizedTypeProperties` in core has this shape: a default constant on
+    // the trait plus `impl<T> SizedTypeProperties for T {}`. Rustc permits
+    // `T::IS_ZST` without an explicit bound because the blanket impl applies
+    // to every type parameter.
+    let package_id = test_pkg();
+    let trait_id = hir::DefId::new(package_id.clone(), 50);
+    let impl_id = hir::DefId::new(package_id.clone(), 51);
+    let use_parameter_id = hir::DefId::new(package_id.clone(), 52);
+    let impl_parameter_id = hir::DefId::new(package_id.clone(), 53);
+    let bool_ty = |hir_id| hir::TypeExpr {
+        hir_id: hid(hir_id),
+        kind: hir::TypeExprKind::Primitive(TypePrimitive::Bool),
+        span: fp_core::span::Span::null(),
+    };
+    let parameter_path = |name: &str, hir_id, def_id: hir::DefId| hir::TypeExpr {
+        hir_id: hid(hir_id),
+        kind: hir::TypeExprKind::Path(hir::QPath::resolved(hir::Path {
+            span: fp_core::span::Span::null(),
+            segments: vec![hir::PathSegment::with_hir_id(
+                name,
+                hid(hir_id + 1),
+                None,
+                hir::Res::Generic(def_id.clone()),
+                true,
+            )],
+            res: hir::Res::Generic(def_id),
+        })),
+        span: fp_core::span::Span::null(),
+    };
+    let trait_path = hir::TypeExpr {
+        hir_id: hid(54),
+        kind: hir::TypeExprKind::Path(hir::QPath::resolved(hir::Path {
+            span: fp_core::span::Span::null(),
+            segments: vec![hir::PathSegment::with_hir_id(
+                "Properties",
+                hid(55),
+                None,
+                hir::Res::Def(trait_id.clone()),
+                true,
+            )],
+            res: hir::Res::Def(trait_id.clone()),
+        })),
+        span: fp_core::span::Span::null(),
+    };
+    let trait_item = hir::Item {
+        hir_id: hid(56),
+        def_id: trait_id.clone(),
+        visibility: hir::Visibility::Private,
+        kind: hir::ItemKind::Trait(hir::Trait {
+            generics: hir::Generics::default(),
+            items: vec![hir::TraitItem {
+                def_id: hir::DefId::new(package_id.clone(), 54),
+                hir_id: hid(57),
+                name: "IS_ZST".into(),
+                kind: hir::TraitItemKind::AssocConst(hir::TraitAssocConst {
+                    name: "IS_ZST".into(),
+                    ty: bool_ty(58),
+                    body: Some(hir::Body {
+                        hir_id: hid(59),
+                        params: Vec::new(),
+                        value: hir::Expr {
+                            hir_id: hid(60),
+                            kind: hir::ExprKind::Literal(hir::Lit::Bool(false)),
+                            span: fp_core::span::Span::null(),
+                        },
+                    }),
+                }),
+            }],
+            supertraits: Vec::new(),
+        }),
+        span: fp_core::span::Span::null(),
+    };
+    let impl_generics = hir::Generics {
+        params: vec![hir::GenericParam {
+            hir_id: hid(61),
+            def_id: impl_parameter_id.clone(),
+            name: "U".into(),
+            span: fp_core::span::Span::null(),
+            pure_wrt_drop: false,
+            kind: hir::GenericParamKind::Type {
+                default: None,
+                synthetic: false,
+            },
+            colon_span: None,
+            source: hir::GenericParamSource::Generics,
+            bounds: Vec::new(),
+            explicit_bindings: Vec::new(),
+            projection_bounds: Vec::new(),
+        }],
+        where_clause: None,
+        span: fp_core::span::Span::null(),
+    };
+    let implementation = hir::Item {
+        hir_id: hid(62),
+        def_id: impl_id.clone(),
+        visibility: hir::Visibility::Private,
+        kind: hir::ItemKind::Impl(hir::Impl {
+            generics: impl_generics,
+            trait_ty: Some(trait_path),
+            self_ty: parameter_path("U", 63, impl_parameter_id),
+            items: Vec::new(),
+        }),
+        span: fp_core::span::Span::null(),
+    };
+    let use_generics = hir::Generics {
+        params: vec![hir::GenericParam {
+            hir_id: hid(65),
+            def_id: use_parameter_id.clone(),
+            name: "T".into(),
+            span: fp_core::span::Span::null(),
+            pure_wrt_drop: false,
+            kind: hir::GenericParamKind::Type {
+                default: None,
+                synthetic: false,
+            },
+            colon_span: None,
+            source: hir::GenericParamSource::Generics,
+            bounds: Vec::new(),
+            explicit_bindings: Vec::new(),
+            projection_bounds: Vec::new(),
+        }],
+        where_clause: None,
+        span: fp_core::span::Span::null(),
+    };
+    let qpath = hir::QPath::resolved(hir::Path {
+        span: fp_core::span::Span::null(),
+        segments: vec![
+            hir::PathSegment::with_hir_id(
+                "T",
+                hid(66),
+                None,
+                hir::Res::Generic(use_parameter_id.clone()),
+                true,
+            ),
+            hir::PathSegment::with_hir_id("IS_ZST", hid(67), None, hir::Res::Error, true),
+        ],
+        res: hir::Res::Generic(use_parameter_id),
+    });
+    let mut package = hir::HirPackage::new(package_id);
+    for item in [trait_item, implementation] {
+        package.def_map.insert(item.def_id.clone(), item.clone());
+        package.items.push(item);
+    }
+
+    let executor = fp_core::executor::CompilerExecutor::new().handle();
+    let checker = HirTypeChecker::new(Rc::new(RefCell::new(package)), None, None, executor.clone());
+    let result = executor.run(async move {
+        let mut scope = checker.borrow().with_generics(&use_generics);
+        scope.expr_path_ty(&qpath).await
+    });
+    assert_eq!(result.expect("blanket associated const lookup"), Ty::bool());
+}
+
+#[test]
 fn lifetime_arguments_do_not_shift_nominal_type_arguments() {
     let package_id = test_pkg();
     let wrapper_id = hir::DefId::new(package_id.clone(), 2);
