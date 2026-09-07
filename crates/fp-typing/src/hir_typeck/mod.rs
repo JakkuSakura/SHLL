@@ -4036,15 +4036,24 @@ impl HirTypeChecker {
         } else {
             None
         };
-        // Older/lower-level HIR producers may leave a generic value path as
-        // `Res::Error` even though its first segment names a parameter in the
-        // current generic scope. Recover only that concrete case; arbitrary
-        // unresolved paths must remain errors.
-        if recovered_def_id.is_none()
-            && path.segments.len() >= 2
-            && !matches!(path.res, hir::Res::Def(_) | hir::Res::Generic(_))
-            && let Some(mut param) = self.generic_param_named(&path.segments[0].ident)
-        {
+        // Type-relative values rooted in a generic parameter are resolved
+        // from the parameter environment, not from a concrete definition.
+        // Lowering normally retains that identity as `Res::Generic`; older
+        // HIR can leave it as `Res::Error`, in which case the in-scope
+        // parameter name is the only sound recovery key. Do this before
+        // `DefId` resolution: generic parameters deliberately have no
+        // nominal definition to use as a value-level receiver.
+        let generic_base = match path.res_ref() {
+            hir::Res::Generic(def_id) => self.generic_ty(def_id.clone()).and_then(|ty| match ty.kind {
+                TyKind::Param(param) => Some(param),
+                _ => None,
+            }),
+            _ if recovered_def_id.is_none() && path.segments.len() >= 2 => {
+                self.generic_param_named(&path.segments[0].ident)
+            }
+            _ => None,
+        };
+        if path.segments.len() >= 2 && let Some(mut param) = generic_base {
             for segment in &path.segments[1..path.segments.len() - 1] {
                 let Some(projected) = self
                     .assoc_type_from_generic_param_bounds(&param.name, &segment.ident)
@@ -4152,33 +4161,6 @@ impl HirTypeChecker {
         // trait/generic-param the path starts from, not the method itself.
         if path.segments.len() > 1 {
             let tail_method = &path.segments.last().unwrap().ident;
-            // A generic base remains `Res::Generic` in HIR. Handle it before
-            // the nominal `Res::Def` path below; otherwise valid projections
-            // such as `T::IS_ZST`/`T::LAYOUT` are reported as unresolved
-            // value paths without consulting either the parameter bounds or
-            // blanket implementations.
-            if let hir::Res::Generic(generic_id) = path.res_ref() {
-                if let Some(Ty {
-                    kind: TyKind::Param(param),
-                }) = self.generic_ty(generic_id.clone())
-                {
-                    if let Some(sig) = self
-                        .generic_param_bound_method_signature(
-                            &param.name,
-                            tail_method,
-                        )
-                        .await?
-                    {
-                        return Ok(sig);
-                    }
-                    if let Some(ty) = self
-                        .generic_param_bound_assoc_const_type(&param, tail_method)
-                        .await?
-                    {
-                        return Ok(ty);
-                    }
-                }
-            }
             // A generic type parameter base (`T::default()` where
             // `T: Default`) — there is no impl to search (`T` is still
             // abstract), so resolve the method against the parameter's own
@@ -4190,22 +4172,6 @@ impl HirTypeChecker {
                 .await?
             {
                 return Ok(sig);
-            }
-            // A generic type parameter's associated constant is selected
-            // from the trait bound in the same type-relative phase as an
-            // associated method. The trait declaration is authoritative for
-            // both abstract constants and constants with a default body;
-            // concrete impl selection belongs to a later monomorphization
-            // step. The member name is only the lookup key, never a semantic
-            // special case.
-            if let Some(Ty {
-                kind: TyKind::Param(param),
-            }) = self.generic_ty(def_id.clone())
-                && let Some(ty) = self
-                    .generic_param_bound_assoc_const_type(&param, tail_method)
-                    .await?
-            {
-                return Ok(ty);
             }
             // A value-path resolver may bind the full qualified path to the
             // associated member's DefId (`MaybeUninit::uninit`), rather than
