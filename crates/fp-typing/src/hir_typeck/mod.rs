@@ -516,6 +516,15 @@ impl HirTypeChecker {
         self.generic_scope.get(&def_id).cloned()
     }
 
+    fn generic_param_named(&self, name: &hir::Symbol) -> Option<ty::ParamTy> {
+        self.generic_scope.values().any(|ty| {
+            matches!(&ty.kind, TyKind::Param(param) if param.name == *name)
+        }).then(|| ty::ParamTy {
+            index: u32::MAX,
+            name: name.clone(),
+        })
+    }
+
     /// The package actually being checked. The program owns it in a shared
     /// cell; this scoped read borrow preserves direct package access without
     /// cloning its compiler state.
@@ -4027,6 +4036,45 @@ impl HirTypeChecker {
         } else {
             None
         };
+        // Older/lower-level HIR producers may leave a generic value path as
+        // `Res::Error` even though its first segment names a parameter in the
+        // current generic scope. Recover only that concrete case; arbitrary
+        // unresolved paths must remain errors.
+        if recovered_def_id.is_none()
+            && path.segments.len() >= 2
+            && !matches!(path.res, hir::Res::Def(_) | hir::Res::Generic(_))
+            && let Some(mut param) = self.generic_param_named(&path.segments[0].ident)
+        {
+            for segment in &path.segments[1..path.segments.len() - 1] {
+                let Some(projected) = self
+                    .assoc_type_from_generic_param_bounds(&param.name, &segment.ident)
+                    .await?
+                else {
+                    param = ty::ParamTy {
+                        index: u32::MAX,
+                        name: segment.ident.clone(),
+                    };
+                    break;
+                };
+                let TyKind::Param(projected_param) = projected.kind else {
+                    break;
+                };
+                param = projected_param;
+            }
+            let tail = &path.segments[path.segments.len() - 1].ident;
+            if let Some(sig) = self
+                .generic_param_bound_method_signature(&param.name, tail)
+                .await?
+            {
+                return Ok(sig);
+            }
+            if let Some(ty) = self
+                .generic_param_bound_assoc_const_type(&param, tail)
+                .await?
+            {
+                return Ok(ty);
+            }
+        }
         let def_id = match (&path.res, &recovered_def_id) {
             (hir::Res::Def(def_id), _) => def_id.clone(),
             (_, Some(def_id)) => def_id.clone(),
@@ -4917,7 +4965,10 @@ impl HirTypeChecker {
         param: &ty::ParamTy,
         const_name: &hir::Symbol,
     ) -> Result<Option<Ty>> {
-        let bounds = self.projection_param_bounds(param).map(<[_]>::to_vec);
+        let bounds = self
+            .projection_param_bounds(param)
+            .map(<[_]>::to_vec)
+            .or_else(|| self.generic_param_bounds(&param.name).map(<[_]>::to_vec));
 
         let mut trait_ids = Vec::new();
         fn flatten<'a>(bound: &'a hir::TypeExpr, out: &mut Vec<&'a hir::TypeExpr>) {
