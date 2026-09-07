@@ -3944,6 +3944,13 @@ impl HirTypeChecker {
                         if let Some(sig) = found {
                             return Ok(sig);
                         }
+                        if let TyKind::Param(param) = &self_ty.kind
+                            && let Some(ty) = self
+                                .generic_param_bound_assoc_const_type(param, &method_segment.ident)
+                                .await?
+                        {
+                            return Ok(ty);
+                        }
                         return Ok(self.error_ty(format!(
                             "method `{}` not found on `Self` (self type: {:?})",
                             method_segment.ident, self_ty
