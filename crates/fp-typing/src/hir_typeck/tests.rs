@@ -253,6 +253,49 @@ fn numeric_binary_context_reaches_nested_literal_expression() {
 }
 
 #[test]
+fn array_index_literal_infers_usize() {
+    let index_id = hid(16);
+    let expr = hir::Expr {
+        hir_id: hid(17),
+        kind: hir::ExprKind::Index(
+            Box::new(hir::Expr {
+                hir_id: hid(18),
+                kind: hir::ExprKind::Array(vec![hir::Expr {
+                    hir_id: hid(19),
+                    kind: hir::ExprKind::Literal(hir::Lit::Integer(1)),
+                    span: fp_core::span::Span::null(),
+                }]),
+                span: fp_core::span::Span::null(),
+            }),
+            Box::new(hir::Expr {
+                hir_id: index_id.clone(),
+                kind: hir::ExprKind::Literal(hir::Lit::Integer(0)),
+                span: fp_core::span::Span::null(),
+            }),
+        ),
+        span: fp_core::span::Span::null(),
+    };
+    let item = hir::Item {
+        hir_id: hid(20),
+        def_id: hir::DefId::local(2),
+        visibility: hir::Visibility::Private,
+        kind: hir::ItemKind::Expr(expr),
+        span: fp_core::span::Span::null(),
+    };
+    let mut program = hir::HirPackage::new(test_pkg());
+    program.items.push(item.clone());
+    program.def_map.insert(item.def_id.clone(), item);
+    let executor = fp_core::executor::CompilerExecutor::new().handle();
+    let results = executor
+        .run(typecheck_program(program, executor.clone()))
+        .expect("HIR type check");
+    assert_eq!(
+        results.borrow().expr_type(index_id),
+        Some(Ty::uint(ty::UintTy::Usize))
+    );
+}
+
+#[test]
 fn records_binding_pattern_type() {
     let pattern = hir::Pat {
         hir_id: hid(8),

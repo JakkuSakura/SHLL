@@ -1622,7 +1622,10 @@ impl HirTypeChecker {
             }),
             hir::ExprKind::Index(receiver, index) => Box::pin(async {
                 let receiver_ty = self.check_expr(receiver).await?;
-                let index_ty = self.check_expr(index).await?;
+                let index_ty = self
+                    .with_expected_expr_type(Ty::uint(ty::UintTy::Usize))
+                    .check_expr(index)
+                    .await?;
                 let receiver_ty = match &receiver_ty.kind {
                     TyKind::Ref(_, inner, _) => inner.as_ref(),
                     _ => &receiver_ty,
