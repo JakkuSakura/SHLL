@@ -1758,10 +1758,26 @@ impl HirTypeChecker {
             hir::ExprKind::If(condition, then_expr, else_expr) => Box::pin(async move {
                 let condition = self.check_expr(condition).await?;
                 self.require_same_at(&condition, &Ty::bool(), expr.span)?;
-                let then_ty = self.check_expr(then_expr).await?;
+                // The expected type of an `if` expression is inherited by
+                // both branches. Rustc uses this context to infer
+                // unsuffixed literals in branch tails (for example the
+                // `1.0` returned by a floating-point `signum` method).
+                let then_ty = match self.expected_expr_type.clone() {
+                    Some(expected) => self
+                        .with_expected_expr_type(expected)
+                        .check_expr(then_expr)
+                        .await?,
+                    None => self.check_expr(then_expr).await?,
+                };
                 let mut result_ty = then_ty;
                 if let Some(else_expr) = else_expr {
-                    let else_ty = self.check_expr(else_expr).await?;
+                    let else_ty = match self.expected_expr_type.clone() {
+                        Some(expected) => self
+                            .with_expected_expr_type(expected)
+                            .check_expr(else_expr)
+                            .await?,
+                        None => self.check_expr(else_expr).await?,
+                    };
                     result_ty = self.unify_branch_types(&result_ty, &else_ty)?;
                 }
                 Ok::<_, fp_core::error::Error>(match else_expr.as_ref() {
