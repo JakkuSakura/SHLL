@@ -438,6 +438,27 @@ impl InPackageResolver {
                                     })
                                 })
                         }
+                        ResolutionResult::Found(path) => {
+                            match path.res {
+                                hir::Res::Def(def_id) => {
+                                    self.hir_program.borrow().item(def_id).and_then(|item| {
+                                        let hir::ItemKind::Enum(definition) = item.kind else {
+                                            return None;
+                                        };
+                                        (directive.namespace == Namespace::Value).then(|| {
+                                            definition
+                                                .variants
+                                                .into_iter()
+                                                .map(|variant| {
+                                                    (variant.name, hir::Res::Def(variant.def_id))
+                                                })
+                                                .collect::<Vec<_>>()
+                                        })
+                                    })
+                                }
+                                _ => None,
+                            }
+                        }
                         _ => None,
                     };
                     let Some(members) = members else {
