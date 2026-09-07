@@ -19,7 +19,7 @@ pub type RegisterId = u32;
 pub type BasicBlockId = u32;
 pub type LabelId = u32;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum RuntimeSymbol {
     Printf,
     Fprintf,
@@ -73,7 +73,7 @@ impl RuntimeSymbol {
 /// that AST. `LirPackage` (see its own doc comment) is just one of these
 /// per package — there's no separate per-module/per-artifact identity
 /// layer underneath it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LirBlob {
     pub data_layout: LirDataLayout,
     pub functions: Vec<LirFunction>,
@@ -82,31 +82,10 @@ pub struct LirBlob {
     pub queries: Vec<LirQuery>,
 }
 
-/// `ItemKind::PrecompiledLir` (see `fp_core::ast::item`) needs `LirBlob`
-/// to satisfy the same derive bounds every other `ItemKind` payload gets
-/// via the `common_enum!` macro (`Hash`, `Serialize`, `Deserialize`) —
-/// mirrors `AsmProgram`'s identical treatment for `ItemKind::PrecompiledAsm`
-/// (`fp_core::asmir`): trivial/error stand-ins, not real implementations.
-/// An already-compiled artifact is never meant to be hashed for
-/// deduplication or serialized to disk as AST.
+/// Hashing is retained for AST enum compatibility. Persistent compiler
+/// caching uses the complete serialized value rather than this marker hash.
 impl std::hash::Hash for LirBlob {
     fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
-}
-
-impl serde::Serialize for LirBlob {
-    fn serialize<S: serde::Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
-        Err(serde::ser::Error::custom(
-            "LirBlob (ItemKind::PrecompiledLir) does not support serialization",
-        ))
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for LirBlob {
-    fn deserialize<D: serde::Deserializer<'de>>(_deserializer: D) -> Result<Self, D::Error> {
-        Err(serde::de::Error::custom(
-            "LirBlob (ItemKind::PrecompiledLir) does not support deserialization",
-        ))
-    }
 }
 
 /// One compiled package's LIR content — pairs with `LirBlob` the same way
@@ -120,7 +99,7 @@ impl<'de> serde::Deserialize<'de> for LirBlob {
 /// the end. `LirProgram::merged_blob_for_package` flattens every package's
 /// own blobs (and every dependency's) into the one combined `LirBlob` a
 /// `TargetBackend` actually needs.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LirPackage {
     pub data_layout: LirDataLayout,
     pub blobs: Vec<LirBlob>,
@@ -139,14 +118,14 @@ impl LirPackage {
 /// renamed entrypoint function `CompilerState::insert_runtime_program`
 /// stores (see its own doc comment), not as `LirPackage`'s storage (that's
 /// just a `LirBlob` now).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LirCodeUnit {
     pub package_id: PackageId,
     pub module_path: crate::ast::path::InPackagePath,
     pub kind: LirCodeUnitKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LirCodeUnitKind {
     Function(LirFunction),
     Global(LirGlobal),
@@ -154,14 +133,14 @@ pub enum LirCodeUnitKind {
     Query(LirQuery),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LirDataLayout {
     pub pointer_size_bits: u32,
     pub pointer_alignment: u32,
     pub integer_alignments: Vec<(u32, u32)>,
 }
 
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LirDataLayoutError {
     #[error("pointer size must be non-zero and byte-addressable, got {0}")]
     InvalidPointerSize(u32),
@@ -181,7 +160,7 @@ pub enum LirDataLayoutError {
     ErrorTypeHasNoLayout,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LirQuery {
     pub query_id: LirId,
     pub origin: QueryOrigin,
@@ -189,7 +168,7 @@ pub struct LirQuery {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LirFunction {
     pub def_id: Option<crate::hir::DefId>,
     pub name: Name,
@@ -202,14 +181,14 @@ pub struct LirFunction {
     pub is_declaration: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LirFunctionSignature {
     pub params: Vec<LirType>,
     pub return_type: LirType,
     pub is_variadic: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LirBasicBlock {
     pub id: BasicBlockId,
     pub label: Option<Name>,
@@ -219,7 +198,7 @@ pub struct LirBasicBlock {
     pub successors: Vec<BasicBlockId>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LirInstruction {
     pub id: LirId,
     pub kind: LirInstructionKind,
@@ -229,7 +208,7 @@ pub struct LirInstruction {
     pub debug_info: Option<DebugInfo>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LirInstructionKind {
     // Arithmetic operations
     Add(LirValue, LirValue),
@@ -359,7 +338,7 @@ pub enum LirInstructionKind {
     Freeze(LirValue),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LirIntrinsicKind {
     Print,
     Println,
@@ -387,7 +366,7 @@ pub enum LirIntrinsicKind {
 /// comptime probe (see `hir_to_mir/expr.rs`'s `lower_operand`, the only
 /// place that ever constructs one), so no compiled binary needs to
 /// re-execute it at runtime.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ComptimeOp {
     TypeValue {
         value: crate::ast::Ty,
@@ -432,7 +411,7 @@ pub enum ComptimeOp {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LirTerminator {
     Return(Option<LirValue>),
     Br(BasicBlockId),
@@ -476,7 +455,7 @@ pub enum LirTerminator {
 
 /// A typed SSA definition. LLVM instructions that produce a result are Values;
 /// this is the operand-level reference to such a definition.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct LirRegister {
     pub id: RegisterId,
     pub ty: LirType,
@@ -484,13 +463,13 @@ pub struct LirRegister {
 
 /// A typed operand in LIR. Every operand owns one authoritative type; callers
 /// do not infer it from its producer or from an instruction-side hint.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LirValue {
     pub ty: LirType,
     pub kind: LirValueKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LirValueKind {
     Register(RegisterId),
     Constant(LirConstantKind),
@@ -503,7 +482,7 @@ pub enum LirValueKind {
 /// The identity of a function value. The value's function-pointer type lives
 /// on `LirValue`, exactly as the type of a global or function value does in
 /// LLVM IR.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum LirFunctionRef {
     Name(Name),
     Package { package_id: PackageId, name: Name },
@@ -512,13 +491,13 @@ pub enum LirFunctionRef {
 
 /// A typed constant value. This is the Rust analogue of LLVM's `Constant`
 /// base class: its type is stored once here, not repeated in each payload.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LirConstant {
     pub ty: LirType,
     pub kind: LirConstantKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LirConstantKind {
     Data(LirConstantData),
     Aggregate(LirConstantAggregate),
@@ -531,7 +510,7 @@ pub enum LirConstantKind {
 }
 
 /// Operand-less constant data, corresponding to LLVM's `ConstantData`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LirConstantData {
     Integer(LirInteger),
     Float(LirFloat),
@@ -540,7 +519,7 @@ pub enum LirConstantData {
 
 /// An integer constant payload. Fixed-width language types retain their native
 /// representation; arbitrary LLVM widths use the APInt-style word buffer.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum LirInteger {
     I1(bool),
     I8(u8),
@@ -553,13 +532,13 @@ pub enum LirInteger {
 
 /// A width-carrying arbitrary integer bit pattern, modeled after LLVM's
 /// `APInt`. It is used only where no native-width LIR integer applies.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct LirApInt {
     pub bit_width: u32,
     pub words: Box<[u64]>,
 }
 
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LirConstantError {
     #[error("integer payload {integer:?} is incompatible with {ty:?}")]
     IntegerTypeMismatch { ty: LirType, integer: LirInteger },
@@ -636,13 +615,13 @@ impl std::fmt::Display for LirInteger {
 
 /// The exact IEEE payload of an LIR floating constant. Decimal source values
 /// are rounded during lowering; LIR itself never stores an untyped `f64`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum LirFloat {
     F32(u32),
     F64(u64),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LirConstantAggregate {
     Array(Vec<LirConstant>),
     Struct(Vec<LirConstant>),
@@ -651,7 +630,7 @@ pub enum LirConstantAggregate {
 
 /// A constant expression is an immutable, typed expression whose operands are
 /// themselves constants. Ordinary computations must use instructions.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LirConstantExpr {
     GetElementPtr {
         base: Box<LirConstant>,
@@ -660,19 +639,19 @@ pub enum LirConstantExpr {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LirRelocationKind {
     Abs64,
     PcRel32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LirRelocationTarget {
     Global(Name),
     Function(Name),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LirGlobalRelocation {
     pub offset: u64,
     pub kind: LirRelocationKind,
@@ -680,7 +659,7 @@ pub struct LirGlobalRelocation {
     pub addend: i64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LirGlobal {
     pub name: Name,
     pub ty: LirType,
@@ -693,13 +672,13 @@ pub struct LirGlobal {
     pub section: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LirTypeDefinition {
     pub name: Name,
     pub ty: LirType,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LirLocal {
     pub id: u32,
     pub ty: LirType,
@@ -707,7 +686,7 @@ pub struct LirLocal {
     pub is_argument: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StackSlot {
     pub id: u32,
     pub size: u32,
@@ -715,7 +694,7 @@ pub struct StackSlot {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum CallingConvention {
     C,
     Fast,
@@ -742,7 +721,7 @@ pub enum CallingConvention {
     AAPCSVfp,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Linkage {
     External,
     AvailableExternally,
@@ -757,20 +736,20 @@ pub enum Linkage {
     Common,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Visibility {
     Default,
     Hidden,
     Protected,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LandingPadClause {
     Catch(LirValue),
     Filter(Vec<LirValue>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DebugInfo {
     pub file: String,
     pub line: u32,

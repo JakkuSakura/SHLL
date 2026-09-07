@@ -39,6 +39,15 @@ pub trait PackageProvider {
     /// the compiler to fill in.
     fn load_package_source(&self, id: &PackageId) -> ProviderResult<AstPackage>;
 
+    /// Stable identity for the package inputs used by compiler caches.
+    /// Providers with an inexpensive source fingerprint should override this;
+    /// the default remains correctness-first for providers whose source is
+    /// only available through their normal loader.
+    fn cache_identity(&self, id: &PackageId) -> ProviderResult<String> {
+        let source = self.load_package_source(id)?;
+        Ok(crate::cache::digest_bytes(format!("{source:?}").as_bytes()))
+    }
+
     /// Packages this provider considers part of the *current workspace*,
     /// as opposed to packages it can merely also supply (e.g. `std`,
     /// blended in by `CompositeProvider` alongside the real project
@@ -276,6 +285,12 @@ impl PackageProvider for CompositeProvider {
         self.provider_for(id)
             .ok_or_else(|| ProviderError::PackageNotFound(id.clone()))?
             .load_package_source(id)
+    }
+
+    fn cache_identity(&self, id: &PackageId) -> ProviderResult<String> {
+        self.provider_for(id)
+            .ok_or_else(|| ProviderError::PackageNotFound(id.clone()))?
+            .cache_identity(id)
     }
 }
 

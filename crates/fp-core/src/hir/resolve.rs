@@ -8,7 +8,7 @@ use crate::ast::path::InPackagePath;
 use crate::span::Span;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Namespace {
     Type,
     Value,
@@ -20,7 +20,7 @@ pub use crate::hir::Symbol;
 
 /// Identity-based module namespace data. Each module definition owns its
 /// direct named children; no source/module path is required for traversal.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleData {
     children: HashMap<crate::hir::DefId, Vec<(Symbol, Namespace, crate::hir::Res)>>,
 }
@@ -192,7 +192,7 @@ impl ModuleData {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Binding {
     Module {
         target: InPackagePath,
@@ -340,13 +340,13 @@ fn binding_to_res(binding: &Binding) -> crate::hir::Res {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct LocalNode {
     parent: Option<LocalScopeId>,
     symbols: HashMap<Symbol, Vec<Binding>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DeclarationRules {
     pub allow_type_value_overlap: bool,
     pub allow_identical_imports: bool,
@@ -380,7 +380,7 @@ impl DeclarationRules {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ResolutionRules {
     pub explicit_import_beats_glob: bool,
     pub definition_beats_glob: bool,
@@ -420,14 +420,14 @@ impl ResolutionRules {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DeclarationOutcome {
     Inserted,
     IdenticalImport,
     Conflict,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ResolutionResult {
     Found(crate::hir::Path),
     Ambiguous,
@@ -440,7 +440,7 @@ impl ResolutionResult {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ResolutionNotFound {
     EmptyPath,
     Package(crate::ast::package::PackageId),
@@ -464,10 +464,10 @@ pub enum ResolutionNotFound {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 struct LocalScopeId(u32);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LocalScope {
     nodes: Vec<LocalNode>,
     current: LocalScopeId,

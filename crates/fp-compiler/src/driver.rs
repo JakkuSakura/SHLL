@@ -14,6 +14,41 @@ use std::rc::Rc;
 
 use crate::{CompilerDriverError, CompilerState, ExecutorHandle};
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct AstCacheArtifact {
+    package_id: PackageId,
+    name: String,
+    prelude_modules: Vec<fp_core::ast::package::PackagePath>,
+    module: fp_core::ast::Module,
+    referenced_paths: HashMap<Vec<String>, Vec<Vec<String>>>,
+}
+
+impl AstCacheArtifact {
+    fn from_package(package: &fp_core::ast::package::AstPackage) -> Self {
+        Self {
+            package_id: package.package_id.clone(),
+            name: package.name.clone(),
+            prelude_modules: package.prelude_modules.clone(),
+            module: package.module.clone(),
+            referenced_paths: package.referenced_paths.clone(),
+        }
+    }
+
+    fn into_package(
+        self,
+        descriptor: fp_core::ast::package::PackageDescriptor,
+    ) -> fp_core::ast::package::AstPackage {
+        fp_core::ast::package::AstPackage {
+            package_id: self.package_id,
+            name: self.name,
+            package: descriptor,
+            prelude_modules: self.prelude_modules,
+            module: self.module,
+            referenced_paths: self.referenced_paths,
+        }
+    }
+}
+
 /// Real Rust source over an entire vendored `std`/`core`/`alloc` package
 /// legitimately produces tens of thousands of "skipping unresolvable
 /// type"-style *warnings* from `HirToMirLowerer` (one per HIR node whose type
@@ -97,6 +132,16 @@ impl CompilerDriver {
         workspace: Rc<fp_core::ast::program::AstProgram>,
     ) -> Self {
         let state = CompilerState::with_workspace(data_layout, tasks, workspace);
+        Self::from_state_rc(Rc::new(RefCell::new(state)))
+    }
+
+    pub fn with_workspace_and_cache(
+        data_layout: fp_core::lir::LirDataLayout,
+        tasks: ExecutorHandle,
+        workspace: Rc<fp_core::ast::program::AstProgram>,
+        cache: fp_core::cache::CacheProvider,
+    ) -> Self {
+        let state = CompilerState::with_workspace_and_cache(data_layout, tasks, workspace, cache);
         Self::from_state_rc(Rc::new(RefCell::new(state)))
     }
 
@@ -256,7 +301,7 @@ impl CompilerDriver {
         let package = self
             .state
             .borrow()
-                .ast_program
+            .ast_program
             .compiled_package(package_id)
             .ok_or_else(|| CompilerDriverError::UnresolvablePackage(package_id.to_string()))?;
         self.compile_items_to_lir_units(&package).await?;
@@ -303,7 +348,7 @@ impl CompilerDriver {
         let package = self
             .state
             .borrow()
-                .ast_program
+            .ast_program
             .compiled_package(package_id)
             .ok_or_else(|| CompilerDriverError::UnresolvablePackage(package_id.to_string()))?;
         let hir_package_id = package.borrow().package_id.clone();
@@ -466,9 +511,66 @@ impl CompilerDriver {
                 self.compile_dependencies(package_id, &metadata.metadata.dependencies)
                     .await?;
 
-                let source = provider.load_package_source(package_id).map_err(|error| {
+                let source_identity = provider.cache_identity(package_id).map_err(|error| {
                     CompilerDriverError::UnresolvablePackage(format!("{package_id}: {error}"))
                 })?;
+                // Include each dependency's provider fingerprint in the AST
+                // key.  A package's parsed graph can change when a
+                // dependency changes even though the dependency's package ID
+                // remains stable; IDs alone are therefore insufficient for
+                // invalidation.
+                let mut dependency_identity = metadata
+                    .metadata
+                    .dependencies
+                    .iter()
+                    .filter_map(|dependency| dependency.resolved_package_id.as_ref())
+                    .map(|dependency_id| {
+                        let provider = self
+                            .state
+                            .borrow()
+                            .ast_program
+                            .provider_for(dependency_id)
+                            .ok_or_else(|| {
+                                CompilerDriverError::UnresolvablePackage(
+                                    dependency_id.to_string(),
+                                )
+                            })?;
+                        let identity = provider.cache_identity(dependency_id).map_err(|error| {
+                            CompilerDriverError::UnresolvablePackage(format!(
+                                "{dependency_id}: {error}"
+                            ))
+                        })?;
+                        Ok(format!("{dependency_id}={identity}"))
+                    })
+                    .collect::<Result<Vec<_>, CompilerDriverError>>()?;
+                dependency_identity.sort();
+                let dependency_identity = dependency_identity.join(",");
+                let cache_key = fp_core::cache::stage_key(
+                    fp_core::cache::CacheStage::Ast,
+                    &package_id.to_string(),
+                    None,
+                    &[("compiler", env!("CARGO_PKG_VERSION")), ("source", &source_identity), ("deps", &dependency_identity)],
+                );
+                let source = match self.state.borrow().cache().load::<AstCacheArtifact>(&cache_key) {
+                    Ok(Some(artifact)) => {
+                        tracing::info!(package = %package_id, key = %cache_key.as_str(), "compiler cache hit: AST");
+                        artifact.into_package((*metadata).clone())
+                    }
+                    Ok(None) => {
+                        tracing::info!(package = %package_id, key = %cache_key.as_str(), "compiler cache miss: AST");
+                        let source = provider.load_package_source(package_id).map_err(|error| {
+                            CompilerDriverError::UnresolvablePackage(format!("{package_id}: {error}"))
+                        })?;
+                        let artifact = AstCacheArtifact::from_package(&source);
+                        self.state.borrow().cache().save(&cache_key, &artifact).map_err(|error| {
+                            CompilerDriverError::InternalCompilerError(format!("failed to save AST cache for {package_id}: {error}"))
+                        })?;
+                        source
+                    }
+                    Err(error) => {
+                        return Err(CompilerDriverError::InternalCompilerError(format!("failed to load AST cache for {package_id}: {error}")));
+                    }
+                };
                 if source.package_id != *package_id {
                     return Err(CompilerDriverError::UnresolvablePackage(format!(
                         "provider returned source for {}, requested {package_id}",
@@ -664,31 +766,116 @@ impl CompilerDriver {
         let hir_package_id = package.borrow().package_id.clone();
         let current_package_id = package.borrow().package_id.clone();
         let package_source = package.borrow().clone();
-        // Re-lowering after comptime evaluation rebuilds HIR from the same
-        // source. Preserve values recorded on the previous package so the
-        // new MIR pass can replace executable entries with static data.
-        let hir_program = self.state.borrow().hir_program();
-        let prior_const_values = hir_program
-            .borrow()
-            .package(&hir_package_id)
-            .map(|hir_package| (hir_package.const_values(), hir_package.const_block_values()));
-        let (hir_program, package_exports) =
-            self.lower_package_hir(&package_source, hir_package_id.clone())?;
-        self.type_check_program(hir_program, package_exports)
-            .await
+        let hir_source_identity = fp_core::cache::digest_serializable(&package_source.module)
             .map_err(|error| {
                 CompilerDriverError::InternalCompilerError(format!(
-                    "package HIR type checking failed: {error}"
+                    "failed to fingerprint HIR input for {hir_package_id}: {error}"
                 ))
             })?;
-        if let Some((const_values, const_block_values)) = prior_const_values {
-            let hir_package = self.state.borrow().hir_package_rc(hir_package_id.clone())?;
-            for (def_id, value) in const_values {
-                hir_package.borrow().record_const_value(def_id, value);
+        let mut hir_dependency_identity = package_source
+            .package
+            .metadata
+            .dependencies
+            .iter()
+            .filter_map(|dependency| dependency.resolved_package_id.as_ref())
+            .map(|dependency_id| {
+                let provider = self
+                    .state
+                    .borrow()
+                    .ast_program
+                    .provider_for(dependency_id)
+                    .ok_or_else(|| {
+                        CompilerDriverError::UnresolvablePackage(dependency_id.to_string())
+                    })?;
+                let identity = provider.cache_identity(dependency_id).map_err(|error| {
+                    CompilerDriverError::UnresolvablePackage(format!("{dependency_id}: {error}"))
+                })?;
+                Ok(format!("{dependency_id}={identity}"))
+            })
+            .collect::<Result<Vec<_>, CompilerDriverError>>()?;
+        hir_dependency_identity.sort();
+        let hir_dependency_identity = hir_dependency_identity.join(",");
+        let backend_identity = format!("{:?}", self.state.borrow().backend_capabilities());
+        let hir_cache_key = fp_core::cache::stage_key(
+            fp_core::cache::CacheStage::Hir,
+            &hir_package_id.to_string(),
+            None,
+            &[
+                ("compiler", env!("CARGO_PKG_VERSION")),
+                ("source", &hir_source_identity),
+                ("deps", &hir_dependency_identity),
+                ("backend", &backend_identity),
+            ],
+        );
+
+        let hir_cache_hit = match self
+            .state
+            .borrow()
+            .cache()
+            .load::<hir::HirPackage>(&hir_cache_key)
+        {
+            Ok(Some(cached_package)) => {
+                tracing::info!(
+                    package = %hir_package_id,
+                    key = %hir_cache_key.as_str(),
+                    "compiler cache hit: HIR"
+                );
+                self.state.borrow_mut().insert_hir(cached_package);
+                true
             }
-            for (def_id, value) in const_block_values {
-                hir_package.borrow().record_const_block_value(def_id, value);
+            Ok(None) => {
+                tracing::info!(
+                    package = %hir_package_id,
+                    key = %hir_cache_key.as_str(),
+                    "compiler cache miss: HIR"
+                );
+                false
             }
+            Err(error) => {
+                return Err(CompilerDriverError::InternalCompilerError(format!(
+                    "failed to load HIR cache for {hir_package_id}: {error}"
+                )));
+            }
+        };
+
+        if !hir_cache_hit {
+            // Re-lowering after comptime evaluation rebuilds HIR from the same
+            // source. Preserve values recorded on the previous package so the
+            // new MIR pass can replace executable entries with static data.
+            let hir_program = self.state.borrow().hir_program();
+            let prior_const_values = hir_program
+                .borrow()
+                .package(&hir_package_id)
+                .map(|hir_package| (hir_package.const_values(), hir_package.const_block_values()));
+            let (hir_program, package_exports) =
+                self.lower_package_hir(&package_source, hir_package_id.clone())?;
+            self.type_check_program(hir_program, package_exports)
+                .await
+                .map_err(|error| {
+                    CompilerDriverError::InternalCompilerError(format!(
+                        "package HIR type checking failed: {error}"
+                    ))
+                })?;
+            if let Some((const_values, const_block_values)) = prior_const_values {
+                let hir_package = self.state.borrow().hir_package_rc(hir_package_id.clone())?;
+                for (def_id, value) in const_values {
+                    hir_package.borrow().record_const_value(def_id, value);
+                }
+                for (def_id, value) in const_block_values {
+                    hir_package.borrow().record_const_block_value(def_id, value);
+                }
+            }
+            let typed_package = self.state.borrow().hir_package_rc(hir_package_id.clone())?;
+            let typed_package = typed_package.borrow().clone();
+            self.state
+                .borrow()
+                .cache()
+                .save(&hir_cache_key, &typed_package)
+                .map_err(|error| {
+                    CompilerDriverError::InternalCompilerError(format!(
+                        "failed to save HIR cache for {hir_package_id}: {error}"
+                    ))
+                })?;
         }
 
         // Transpile: lift typed HIR back to AST — this is what the Kotlin
@@ -1052,6 +1239,54 @@ impl CompilerDriver {
         lowering: &mut HirToMirLowerer,
         def_id: hir::DefId,
     ) -> Result<(), CompilerDriverError> {
+        let hir_identity = {
+            let state_ref = state.borrow();
+            state_ref
+                .hir_program()
+                .borrow()
+                .package(package_id)
+                .map(|package| fp_core::cache::digest_serializable(&package.items))
+                .transpose()
+                .map_err(|error| {
+                    CompilerDriverError::InternalCompilerError(format!(
+                        "failed to fingerprint MIR input for {package_id}: {error}"
+                    ))
+                })?
+                .unwrap_or_else(|| "missing-hir".to_owned())
+        };
+        let cache_key = fp_core::cache::stage_key(
+            fp_core::cache::CacheStage::Mir,
+            &package_id.to_string(),
+            Some(&def_id.index.to_string()),
+            &[
+                ("compiler", env!("CARGO_PKG_VERSION")),
+                ("hir", &hir_identity),
+            ],
+        );
+        match state.borrow().cache().load::<mir::MirCodeUnit>(&cache_key) {
+            Ok(Some(unit)) => {
+                tracing::info!(
+                    package = %package_id,
+                    def_id = %def_id,
+                    key = %cache_key.as_str(),
+                    "compiler cache hit: MIR"
+                );
+                lowering.walk_program_types_for_layouts(&unit);
+                state.borrow_mut().insert_mir_unit(package_id, def_id, unit);
+                return Ok(());
+            }
+            Ok(None) => tracing::info!(
+                package = %package_id,
+                def_id = %def_id,
+                key = %cache_key.as_str(),
+                "compiler cache miss: MIR"
+            ),
+            Err(error) => {
+                return Err(CompilerDriverError::InternalCompilerError(format!(
+                    "failed to load MIR cache for {package_id}/{def_id}: {error}"
+                )));
+            }
+        }
         if let Err(error) = lowering.ensure_item_lowered(def_id.clone()) {
             let diagnostics = lowering.take_diagnostics();
             let details = diagnostics_summary(&diagnostics.get_diagnostics());
@@ -1069,6 +1304,15 @@ impl CompilerDriver {
         // those must not be silently dropped when `lowering` goes out of
         // scope at the end of this function.
         lowering.walk_program_types_for_layouts(&unit);
+        state
+            .borrow()
+            .cache()
+            .save(&cache_key, &unit)
+            .map_err(|error| {
+                CompilerDriverError::InternalCompilerError(format!(
+                    "failed to save MIR cache for {package_id}/{def_id}: {error}"
+                ))
+            })?;
         state.borrow_mut().insert_mir_unit(package_id, def_id, unit);
         Ok(())
     }
@@ -1085,11 +1329,75 @@ impl CompilerDriver {
         lir_gen: &mut MirToLirLowerer,
         def_id: hir::DefId,
     ) -> Result<(), CompilerDriverError> {
+        let (mir_identity, data_layout_identity) = {
+            let state_ref = state.borrow();
+            let mir_identity = state_ref
+                .mir_program()
+                .package(package_id)
+                .and_then(|package| package.borrow().units.get(&def_id).cloned())
+                .map(|unit| fp_core::cache::digest_serializable(&unit))
+                .transpose()
+                .map_err(|error| {
+                    CompilerDriverError::InternalCompilerError(format!(
+                        "failed to fingerprint LIR input for {package_id}/{def_id}: {error}"
+                    ))
+                })?
+                .unwrap_or_else(|| "missing-mir".to_owned());
+            let data_layout_identity = fp_core::cache::digest_serializable(&state_ref.data_layout)
+                .map_err(|error| {
+                    CompilerDriverError::InternalCompilerError(format!(
+                        "failed to fingerprint data layout: {error}"
+                    ))
+                })?;
+            (mir_identity, data_layout_identity)
+        };
+        let cache_key = fp_core::cache::stage_key(
+            fp_core::cache::CacheStage::Lir,
+            &package_id.to_string(),
+            Some(&def_id.index.to_string()),
+            &[
+                ("compiler", env!("CARGO_PKG_VERSION")),
+                ("mir", &mir_identity),
+                ("layout", &data_layout_identity),
+            ],
+        );
+        match state
+            .borrow()
+            .cache()
+            .load::<Vec<fp_core::lir::LirBlob>>(&cache_key)
+        {
+            Ok(Some(blobs)) => {
+                tracing::info!(package = %package_id, def_id = %def_id, "compiler cache hit: LIR");
+                for blob in blobs {
+                    state
+                        .borrow_mut()
+                        .insert_lir_blob_for_package(package_id, blob);
+                }
+                return Ok(());
+            }
+            Ok(None) => {
+                tracing::info!(package = %package_id, def_id = %def_id, "compiler cache miss: LIR")
+            }
+            Err(error) => {
+                return Err(CompilerDriverError::InternalCompilerError(format!(
+                    "failed to load LIR cache for {package_id}/{def_id}: {error}"
+                )));
+            }
+        }
         let blobs = lir_gen.transform_unit(def_id.clone()).map_err(|error| {
             CompilerDriverError::InternalCompilerError(format!(
                 "MIR-to-LIR lowering failed for {def_id}: {error}"
             ))
         })?;
+        state
+            .borrow()
+            .cache()
+            .save(&cache_key, &blobs)
+            .map_err(|error| {
+                CompilerDriverError::InternalCompilerError(format!(
+                    "failed to save LIR cache for {package_id}/{def_id}: {error}"
+                ))
+            })?;
         for blob in blobs {
             state
                 .borrow_mut()

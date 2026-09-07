@@ -36,7 +36,7 @@ pub enum ImplBucketKey {
 /// `ModuleData` migration) its own module/name-resolution tree. Several of
 /// these live inside a `HirProgram`, which owns the whole multi-package
 /// compiled result (see `HirProgram`'s own doc comment).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HirPackage {
     pub id: PackageId,
     /// Resolved direct dependencies visible from this crate's extern prelude.
@@ -297,6 +297,7 @@ pub struct HirPackage {
     /// typecheck) since `TypingShared` writes straight through to this same
     /// `Rc<HirPackage>` — so a diagnostic survives as long as the package
     /// itself does, with nothing to keep in sync.
+    #[serde(skip)]
     pub diagnostics: crate::diagnostics::DiagnosticManager,
 }
 

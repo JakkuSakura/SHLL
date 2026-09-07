@@ -347,7 +347,14 @@ fn compile_source_file(
         input_provider,
     ));
     let workspace = std::rc::Rc::new(fp_core::ast::program::AstProgram::new(provider));
-    let mut driver = CompilerDriver::with_workspace(data_layout(), executor.handle(), workspace);
+    let cache =
+        fp_core::cache::CacheProvider::new(fp_core::cache::CacheConfig::for_current_project());
+    let mut driver = CompilerDriver::with_workspace_and_cache(
+        data_layout(),
+        executor.handle(),
+        workspace,
+        cache,
+    );
     driver.pipeline = pipeline;
     executor
         .run(driver.compile_package(&package_id))
@@ -473,7 +480,14 @@ pub fn build_workspace_driver(
         provider,
     ));
     let workspace = std::rc::Rc::new(fp_core::ast::program::AstProgram::new(combined));
-    let mut driver = CompilerDriver::with_workspace(data_layout(), executor.handle(), workspace);
+    let cache =
+        fp_core::cache::CacheProvider::new(fp_core::cache::CacheConfig::for_current_project());
+    let mut driver = CompilerDriver::with_workspace_and_cache(
+        data_layout(),
+        executor.handle(),
+        workspace,
+        cache,
+    );
     driver.pipeline = PipelineMode::Transpile;
     driver
         .state

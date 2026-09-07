@@ -10,7 +10,7 @@ use crate::hir::ty::Ty;
 /// `fp-typing`, where the actual `decide`/`omega` discharge procedures do)
 /// purely because `HirPackage` needs to name this type to cache it —
 /// discharging one is still entirely `fp-typing`'s concern.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RefinementHint {
     pub binder: Symbol,
     pub predicate: Expr,
@@ -19,7 +19,7 @@ pub struct RefinementHint {
 
 /// Which part of a function's signature a persisted `RefinementHint`
 /// belongs to — see `HirPackage::refinement_hints`'s doc comment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ParamSlot {
     Input(usize),
     Output,

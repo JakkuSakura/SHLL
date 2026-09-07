@@ -35,7 +35,9 @@ pub type Value = crate::ast::Value;
 /// carries its defining `PackageId`, so two separately-lowered packages can
 /// never produce colliding node ids even though each mints its own
 /// `ItemLocalId`s from zero.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct OwnerId(pub DefId);
 
 impl OwnerId {
@@ -51,13 +53,17 @@ impl OwnerId {
 
 /// An index unique only within a single `OwnerId`'s scope (rustc's
 /// `ItemLocalId`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct ItemLocalId(pub u32);
 
 /// Identifies a HIR node with rustc's two-level id: the `owner` (enclosing
 /// item-like definition) plus a `local_id` unique only within that owner's
 /// scope.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct HirId {
     pub owner: OwnerId,
     pub local_id: ItemLocalId,
@@ -144,7 +150,7 @@ impl fmt::Display for DefId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Item {
     pub hir_id: HirId,
     pub def_id: DefId,
@@ -153,7 +159,7 @@ pub struct Item {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ItemKind {
     Function(Function),
     Struct(Struct),
@@ -166,14 +172,14 @@ pub enum ItemKind {
     Expr(Expr),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeAlias {
     pub name: Symbol,
     pub generics: Generics,
     pub target: TypeExpr,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Function {
     pub sig: FunctionSig,
     pub body: Option<Block>,
@@ -183,7 +189,7 @@ pub struct Function {
     pub attrs: Vec<crate::ast::Attribute>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FunctionSig {
     pub name: Symbol,
     pub inputs: Vec<Param>,
@@ -192,7 +198,7 @@ pub struct FunctionSig {
     pub abi: Abi,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Param {
     pub hir_id: HirId,
     pub pat: Pat,
@@ -203,7 +209,7 @@ pub struct Param {
     pub default: Option<Expr>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Struct {
     pub name: Symbol,
     pub fields: Vec<StructField>,
@@ -211,7 +217,7 @@ pub struct Struct {
     pub repr: crate::ast::ReprOptions,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Enum {
     /// Source declaration metadata retained through HIR for target backends
     /// that need semantic derives or attributes after type checking.
@@ -222,7 +228,7 @@ pub struct Enum {
     pub repr: crate::ast::ReprOptions,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EnumVariant {
     pub attrs: Vec<crate::ast::Attribute>,
     pub hir_id: HirId,
@@ -232,7 +238,7 @@ pub struct EnumVariant {
     pub payload: Option<TypeExpr>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StructField {
     pub hir_id: HirId,
     pub name: Symbol,
@@ -240,7 +246,7 @@ pub struct StructField {
     pub vis: Visibility,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Const {
     pub name: Symbol,
     pub ty: TypeExpr,
@@ -249,7 +255,7 @@ pub struct Const {
     pub is_host: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Impl {
     pub generics: Generics,
     pub trait_ty: Option<TypeExpr>,
@@ -257,14 +263,14 @@ pub struct Impl {
     pub items: Vec<ImplItem>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Query {
     pub origin: QueryOrigin,
     pub ir: QueryIrDocument,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImplItem {
     pub def_id: DefId,
     pub hir_id: HirId,
@@ -272,7 +278,7 @@ pub struct ImplItem {
     pub kind: ImplItemKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ImplItemKind {
     Method(Function),
     AssocConst(Const),
@@ -285,7 +291,7 @@ pub enum ImplItemKind {
 /// concrete impl is checked/resolved against (see `HirTypeChecker::
 /// method_output`'s trait-default-method fallback, which searches here when
 /// a concrete impl doesn't redeclare a requested method itself).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Trait {
     pub generics: Generics,
     pub items: Vec<TraitItem>,
@@ -299,7 +305,7 @@ pub struct Trait {
     pub supertraits: Vec<Path>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TraitItem {
     pub def_id: DefId,
     pub hir_id: HirId,
@@ -307,7 +313,7 @@ pub struct TraitItem {
     pub kind: TraitItemKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TraitItemKind {
     /// A trait method — `Function.body` is `Some` for a default-provided
     /// method (e.g. `Iterator::map`) and `None` for one every impl must
@@ -326,14 +332,14 @@ pub enum TraitItemKind {
     AssocType(TraitAssocType),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TraitAssocConst {
     pub name: Symbol,
     pub ty: TypeExpr,
     pub body: Option<Body>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TraitAssocType {
     pub name: Symbol,
     /// Bounds declared on the associated type, such as
@@ -346,27 +352,27 @@ pub struct TraitAssocType {
 /// the CURRENT impl's own concrete binding (see `HirTypeChecker::
 /// impl_assoc_types`, which is deliberately scoped to just this, not full
 /// trait-default/witness resolution).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AssocType {
     pub name: Symbol,
     pub ty: TypeExpr,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Body {
     pub hir_id: HirId,
     pub params: Vec<Param>,
     pub value: Expr,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Expr {
     pub hir_id: HirId,
     pub kind: ExprKind,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ExprKind {
     Literal(Lit),
     Path(QPath),
@@ -429,7 +435,7 @@ pub enum ExprKind {
     For(Box<Pat>, Box<Expr>, Block),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExprConstBlock {
     /// This const block's own identity, minted the same way every other
     /// item/def is during AST-to-HIR lowering (see
@@ -440,7 +446,7 @@ pub struct ExprConstBlock {
     pub body: Box<Expr>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExprClosure {
     /// Each parameter's declared type is `TypeExprKind::Infer` unless the
     /// source explicitly annotated it — real closures are overwhelmingly
@@ -450,7 +456,7 @@ pub struct ExprClosure {
     pub body: Box<Expr>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MatchArm {
     pub hir_id: HirId,
     pub pat: Pat,
@@ -458,7 +464,7 @@ pub struct MatchArm {
     pub body: Expr,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TryExpr {
     pub expr: Box<Expr>,
     pub catches: Vec<TryCatch>,
@@ -466,14 +472,14 @@ pub struct TryExpr {
     pub finally: Option<Box<Expr>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TryCatch {
     pub hir_id: HirId,
     pub pat: Option<Pat>,
     pub body: Expr,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExprReference {
     pub hir_id: HirId,
     pub mutable: crate::hir::ty::Mutability,
@@ -481,7 +487,7 @@ pub struct ExprReference {
     pub expr: Box<Expr>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SliceExpr {
     pub hir_id: HirId,
     pub base: Box<Expr>,
@@ -490,63 +496,63 @@ pub struct SliceExpr {
     pub inclusive: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StructExprField {
     pub hir_id: HirId,
     pub name: Symbol,
     pub expr: Expr,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallArg {
     pub name: Symbol,
     pub value: Expr,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FormatString {
     pub parts: Vec<FormatTemplatePart>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum FormatTemplatePart {
     Literal(String),
     Placeholder(FormatPlaceholder),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FormatPlaceholder {
     pub arg_ref: FormatArgRef,
     pub format_spec: Option<crate::ast::FormatSpec>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum FormatArgRef {
     Implicit,
     Positional(usize),
     Named(String),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IntrinsicCallExpr {
     pub kind: CallKind,
     pub callargs: Vec<CallArg>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Block {
     pub hir_id: HirId,
     pub stmts: Vec<Stmt>,
     pub expr: Option<Box<Expr>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Stmt {
     pub hir_id: HirId,
     pub kind: StmtKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum StmtKind {
     Local(Local),
     Item(Item),
@@ -554,7 +560,7 @@ pub enum StmtKind {
     Semi(Expr),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Local {
     pub hir_id: HirId,
     pub pat: Pat,
@@ -562,13 +568,13 @@ pub struct Local {
     pub init: Option<Expr>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Pat {
     pub hir_id: HirId,
     pub kind: PatKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum PatKind {
     Wild,
     Binding { name: Symbol, mutable: bool },
@@ -579,39 +585,39 @@ pub enum PatKind {
     Lit(Lit),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PatField {
     pub hir_id: HirId,
     pub name: Symbol,
     pub pat: Pat,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeExpr {
     pub hir_id: HirId,
     pub kind: TypeExprKind,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeStructuralField {
     pub name: Symbol,
     pub ty: Box<TypeExpr>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeStructural {
     pub fields: Vec<TypeStructuralField>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeBinaryOp {
     pub kind: TypeBinaryOpKind,
     pub lhs: Box<TypeExpr>,
     pub rhs: Box<TypeExpr>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TypeExprKind {
     Primitive(TypePrimitive),
     Path(QPath),
@@ -669,13 +675,13 @@ pub enum TypeExprKind {
     LiteralString(String),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FnPtrType {
     pub inputs: Vec<Box<TypeExpr>>,
     pub output: Box<TypeExpr>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Path<R = Res> {
     /// Source span covering the complete path.
     pub span: Span,
@@ -700,7 +706,11 @@ impl<R> Path<R> {
     }
 
     pub fn with_span(span: Span, res: R, segments: Vec<PathSegment>) -> Self {
-        Self { span, res, segments }
+        Self {
+            span,
+            res,
+            segments,
+        }
     }
 
     pub fn base(res: R) -> Self {
@@ -729,7 +739,7 @@ impl<R: Clone> Path<R> {
 
 /// A qualified HIR path, matching rustc's split between ordinary resolved
 /// paths and type-relative associated-item paths.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum QPath {
     /// An ordinary path, optionally explicitly qualified by a `Self` type:
     /// `Trait::Item` or `<T as Trait>::Item`.
@@ -809,7 +819,7 @@ impl QPath {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PathSegment {
     /// Source spelling of this ordinary path component. In
     /// `QPath::Resolved`, every component remains in `Path::segments`;
@@ -875,7 +885,7 @@ impl PathSegment {
 /// to its spelling.  The type checker currently erases regions, but retaining
 /// the identity and source metadata here keeps path generic arguments
 /// lossless for diagnostics and later lowering stages.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Lifetime {
     pub hir_id: HirId,
     pub ident: Symbol,
@@ -913,16 +923,12 @@ impl Lifetime {
         let (kind, syntax) = match ident.as_str() {
             "'static" => (LifetimeKind::Static, LifetimeSyntax::ExplicitBound),
             "'_" => (LifetimeKind::Infer, LifetimeSyntax::ExplicitAnonymous),
-            _ => (LifetimeKind::Param(hir_id.clone()), LifetimeSyntax::ExplicitBound),
+            _ => (
+                LifetimeKind::Param(hir_id.clone()),
+                LifetimeSyntax::ExplicitBound,
+            ),
         };
-        Self::new(
-            hir_id,
-            ident,
-            kind,
-            LifetimeSource::Path,
-            syntax,
-            span,
-        )
+        Self::new(hir_id, ident, kind, LifetimeSource::Path, syntax, span)
     }
 
     pub fn as_str(&self) -> &str {
@@ -952,7 +958,7 @@ impl fmt::Display for Lifetime {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LifetimeKind {
     Param(HirId),
     ImplicitObjectLifetimeDefault,
@@ -961,7 +967,7 @@ pub enum LifetimeKind {
     Static,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LifetimeSource {
     Reference,
     Path,
@@ -970,14 +976,14 @@ pub enum LifetimeSource {
     Other,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LifetimeSyntax {
     Implicit,
     ExplicitAnonymous,
     ExplicitBound,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GenericArgs {
     pub args: Vec<GenericArg>,
     /// Associated-item constraints attached to this segment, matching
@@ -1029,13 +1035,16 @@ impl GenericArgs {
         }) else {
             return None;
         };
-        let [AssocItemConstraint {
-            ident,
-            kind: AssocItemConstraintKind::Equality {
-                term: Term::Ty(output),
+        let [
+            AssocItemConstraint {
+                ident,
+                kind:
+                    AssocItemConstraintKind::Equality {
+                        term: Term::Ty(output),
+                    },
+                ..
             },
-            ..
-        }] = self.constraints.as_slice()
+        ] = self.constraints.as_slice()
         else {
             return None;
         };
@@ -1087,8 +1096,7 @@ impl GenericArgs {
     /// rustc's optional `span_ext()` accessor. A zero-width span represents a
     /// synthesized or absent argument list.
     pub fn span_ext(&self) -> Option<Span> {
-        (!self.span_ext.is_null() && self.span_ext.lo != self.span_ext.hi)
-            .then_some(self.span_ext)
+        (!self.span_ext.is_null() && self.span_ext.lo != self.span_ext.hi).then_some(self.span_ext)
     }
 }
 
@@ -1103,7 +1111,7 @@ impl Default for GenericArgs {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum GenericArgsParentheses {
     No,
     ReturnTypeNotation,
@@ -1115,7 +1123,7 @@ pub enum GenericArgsParentheses {
 /// Rustc keeps this distinction on the inference argument itself because a
 /// syntactic wildcard can remain ambiguous between a type and a const until
 /// generic argument lowering, while `{ _ }` is unambiguously a const.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum InferArgKind {
     TypeOrConst,
     Const,
@@ -1123,14 +1131,14 @@ pub enum InferArgKind {
 
 /// Metadata carried by an inferred generic argument, matching rustc HIR's
 /// `InferArg` rather than collapsing `_` to an unlocated unit variant.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferArg {
     pub hir_id: HirId,
     pub span: Span,
     pub kind: InferArgKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GenericArg {
     Lifetime(Lifetime),
     Type(Box<TypeExpr>),
@@ -1147,14 +1155,14 @@ pub enum GenericArg {
 /// generic argument lowering differently.  The owned HIR representation uses
 /// the same distinction while retaining the existing expression tree for
 /// anonymous constants.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ConstArg {
     pub hir_id: HirId,
     pub kind: ConstArgKind,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ConstArgKind {
     /// A path-shaped const argument, normally a const parameter or item.
     Path(QPath),
@@ -1193,7 +1201,7 @@ impl ConstArg {
 /// The constrained item can itself be generic (`Item<'a> = T`). Rustc keeps
 /// those arguments in `AssocItemConstraint::gen_args`, separate from the
 /// equality/bound payload, so HIR does the same.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AssocItemConstraint {
     /// HIR identity of the constraint itself, matching rustc HIR rather than
     /// treating a constraint as metadata owned solely by its path segment.
@@ -1211,21 +1219,25 @@ pub struct AssocItemConstraint {
 /// Rustc's HIR preserves whether an equality binds an associated type or an
 /// associated const. Keeping that distinction avoids turning const bindings
 /// into invalid type expressions during later lowering stages.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Term {
     Ty(Box<TypeExpr>),
     Const(Box<Expr>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum AssocItemConstraintKind {
-    Equality { term: Term },
+    Equality {
+        term: Term,
+    },
     /// A bound constraint such as `Item: Trait`, matching rustc's
     /// `AssocItemConstraintKind::Bound` terminology.
-    Bound { bounds: Vec<TypeExpr> },
+    Bound {
+        bounds: Vec<TypeExpr>,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Generics {
     pub params: Vec<GenericParam>,
     pub where_clause: Option<WhereClause>,
@@ -1234,7 +1246,7 @@ pub struct Generics {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GenericParam {
     pub hir_id: HirId,
     pub def_id: DefId,
@@ -1284,7 +1296,7 @@ pub struct GenericParam {
     pub projection_bounds: Vec<(Symbol, Vec<TypeExpr>)>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum GenericParamSource {
     /// A parameter declared in an item's generic parameter list.
     Generics,
@@ -1292,7 +1304,7 @@ pub enum GenericParamSource {
     Binder,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MissingLifetimeKind {
     /// An explicitly written `'_` lifetime.
     Underscore,
@@ -1304,7 +1316,7 @@ pub enum MissingLifetimeKind {
     Brackets,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LifetimeParamKind {
     /// A named lifetime declared explicitly, such as `'a`.
     Explicit,
@@ -1314,7 +1326,7 @@ pub enum LifetimeParamKind {
     Error,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GenericParamKind {
     /// A named lifetime parameter. Region checking is not implemented yet,
     /// but retaining the declaration preserves rustc's generic parameter
@@ -1331,12 +1343,12 @@ pub enum GenericParamKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WhereClause {
     pub predicates: Vec<WherePredicate>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum WherePredicate {
     BoundPredicate {
         bounded_ty: Box<TypeExpr>,
@@ -1344,12 +1356,12 @@ pub enum WherePredicate {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TypeBound {
     Trait(Path),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Lit {
     Bool(bool),
     Integer(i64),
@@ -1364,7 +1376,7 @@ pub enum Lit {
     CStr(Vec<u8>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum BinOp {
     Add,
     Sub,
@@ -1386,7 +1398,7 @@ pub enum BinOp {
     Ge,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum UnOp {
     Not,
     Neg,
@@ -1394,13 +1406,13 @@ pub enum UnOp {
     Box,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Visibility {
     Public,
     Private,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Res {
     Def(DefId),
     Local(HirId),
@@ -1450,7 +1462,7 @@ impl Res {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BuiltinSelfType {
     Reference {
         mutable: bool,
@@ -1517,7 +1529,7 @@ impl Default for Generics {
 
 /// A generic function/method call whose concrete type arguments have been
 /// resolved and are ready for monomorphization.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GenericCallResolution {
     pub def_id: DefId,
     pub args: Vec<Ty>,
@@ -2145,19 +2157,16 @@ impl AssocItemConstraint {
                 Span::union(bounds.iter().map(TypeExpr::span))
             }
         };
-        self.span
-            .or(Span::union([
-                self.gen_args.span_ext().unwrap_or_else(Span::null),
-                payload,
-            ]))
+        self.span.or(Span::union([
+            self.gen_args.span_ext().unwrap_or_else(Span::null),
+            payload,
+        ]))
     }
 
     /// Obtain the right-hand side of an associated type equality constraint.
     pub fn ty(&self) -> Option<&TypeExpr> {
         match &self.kind {
-            AssocItemConstraintKind::Equality {
-                term: Term::Ty(ty),
-            } => Some(ty),
+            AssocItemConstraintKind::Equality { term: Term::Ty(ty) } => Some(ty),
             _ => None,
         }
     }
@@ -2223,9 +2232,12 @@ impl GenericParamKind {
                 .map(|ty| ty.span())
                 .unwrap_or_else(Span::null),
             GenericParamKind::Const { ty, default } => Span::union(
-                [Some(ty.span()), default.as_ref().map(|const_arg| const_arg.span)]
-                    .into_iter()
-                    .flatten(),
+                [
+                    Some(ty.span()),
+                    default.as_ref().map(|const_arg| const_arg.span),
+                ]
+                .into_iter()
+                .flatten(),
             ),
         }
     }
@@ -2328,11 +2340,7 @@ mod path_tests {
             ))]),
             Default::default(),
         );
-        let output = TypeExpr::new(
-            Default::default(),
-            TypeExprKind::Never,
-            Default::default(),
-        );
+        let output = TypeExpr::new(Default::default(), TypeExprKind::Never, Default::default());
         let args = GenericArgs {
             args: vec![
                 GenericArg::Lifetime("'a".into()),
@@ -2388,11 +2396,8 @@ mod path_tests {
 
     #[test]
     fn generic_arg_views_match_rustc_categories() {
-        let lifetime = GenericArg::Lifetime(Lifetime::from_name(
-            "'a",
-            HirId::default(),
-            Span::null(),
-        ));
+        let lifetime =
+            GenericArg::Lifetime(Lifetime::from_name("'a", HirId::default(), Span::null()));
         let ty = GenericArg::Type(Box::new(TypeExpr::new(
             HirId::default(),
             TypeExprKind::Never,
@@ -2417,10 +2422,7 @@ mod path_tests {
         assert_eq!(ty.to_ord(), crate::ast::ParamKindOrd::TypeOrConst);
         assert_eq!(placeholder.descr(), "placeholder");
         assert!(placeholder.is_ty_or_const());
-        assert_eq!(
-            placeholder.to_ord(),
-            crate::ast::ParamKindOrd::TypeOrConst
-        );
+        assert_eq!(placeholder.to_ord(), crate::ast::ParamKindOrd::TypeOrConst);
         assert_eq!(constant_placeholder.descr(), "constant");
         assert!(constant_placeholder.is_ty_or_const());
 
@@ -2451,11 +2453,7 @@ mod path_tests {
 
     #[test]
     fn associated_constraints_expose_typed_rhs() {
-        let ty = TypeExpr::new(
-            Default::default(),
-            TypeExprKind::Never,
-            Default::default(),
-        );
+        let ty = TypeExpr::new(Default::default(), TypeExprKind::Never, Default::default());
         let type_constraint = AssocItemConstraint {
             hir_id: Default::default(),
             ident: "Item".into(),

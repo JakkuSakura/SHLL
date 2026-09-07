@@ -11,7 +11,7 @@ use super::{Body, BodyId, ConstantKind, Item, Operand, Rvalue, StatementKind, Te
 /// `MirPackage::units`), so re-lowering one item after a comptime value
 /// resolves means replacing its one unit, not rebuilding the whole
 /// package's content.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MirCodeUnit {
     pub items: Vec<Item>,
     pub bodies: HashMap<BodyId, Body>,

@@ -263,6 +263,9 @@ name = "bitflags"
 version = "2.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "bitvec"
@@ -1220,6 +1223,7 @@ dependencies = [
  "fp-typing",
  "serde",
  "thiserror 2.0.19",
+ "tracing",
 ]
 
 [[package]]
@@ -1227,6 +1231,7 @@ name = "fp-core"
 version = "0.1.0"
 dependencies = [
  "bigdecimal",
+ "bincode",
  "bitflags 2.13.1",
  "bytes",
  "dashmap 6.2.1",
@@ -1244,6 +1249,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sqlparser",
  "syn 2.0.119",
  "tempfile",

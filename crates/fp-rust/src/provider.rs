@@ -1,7 +1,6 @@
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use fp_core::ast::module::{ModuleDescriptor, ModuleLanguage};
 use fp_core::ast::package::provider::{PackageProvider, ProviderError, ProviderResult};
@@ -85,20 +84,8 @@ fn hash_source_bytes(hash: &mut u64, bytes: &[u8]) {
     *hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
 }
 
-fn project_cache_dir(root: &Path) -> PathBuf {
-    let root = root
-        .file_name()
-        .and_then(|name| name.to_str())
-        .filter(|name| *name == "target")
-        .and_then(|_| root.parent())
-        .unwrap_or(root);
-    root.join("target/fp")
-}
-
 pub struct RustPackageProvider {
     members: Vec<(String, MemberRoot)>,
-    cache: RwLock<HashMap<String, (String, Vec<Item>)>>,
-    disk_cache: fp_core::cache::DiskCache,
 }
 
 impl RustPackageProvider {
@@ -133,10 +120,6 @@ impl RustPackageProvider {
         // one-member package, named after itself — the degenerate case of
         // "package", not a separate code path.
         if root.is_file() {
-            let cache_root = root
-                .parent()
-                .unwrap_or(Path::new("."))
-                .to_path_buf();
             let name = root
                 .file_stem()
                 .and_then(|s| s.to_str())
@@ -144,8 +127,6 @@ impl RustPackageProvider {
                 .to_string();
             return Self {
                 members: vec![(name, MemberRoot::File(root))],
-                cache: RwLock::new(HashMap::new()),
-                disk_cache: fp_core::cache::DiskCache::new(project_cache_dir(&cache_root)),
             };
         }
         // `list_cargo_members`, not `list_members`: this provider is
@@ -166,11 +147,7 @@ impl RustPackageProvider {
                 (package_name, MemberRoot::Dir(dir))
             })
             .collect();
-        Self {
-            members,
-            cache: RwLock::new(HashMap::new()),
-            disk_cache: fp_core::cache::DiskCache::new(project_cache_dir(&root)),
-        }
+        Self { members }
     }
 
     pub fn discover(root: &Path) -> ProviderResult<Self> {
@@ -206,6 +183,13 @@ impl PackageProvider for RustPackageProvider {
         Box::new(crate::normalizer::RustIntrinsicNormalizer::new())
     }
 
+    fn cache_identity(&self, id: &PackageId) -> ProviderResult<String> {
+        Ok(format!(
+            "rust:{}",
+            Self::source_fingerprint(self.resolve_root(id)?)
+        ))
+    }
+
     fn declaration_rules(&self) -> fp_core::hir::resolve::DeclarationRules {
         fp_core::hir::resolve::DeclarationRules::rust()
     }
@@ -235,9 +219,6 @@ impl PackageProvider for RustPackageProvider {
     }
 
     fn refresh(&self) -> ProviderResult<()> {
-        if let Ok(mut c) = self.cache.write() {
-            c.clear();
-        }
         Ok(())
     }
 
@@ -278,25 +259,11 @@ impl RustPackageProvider {
     /// `mod`-graph awareness at all). Cached per package id, shared by
     /// `load_package_metadata` and `load_package_source` so whichever
     /// runs first does the real work.
-    fn package_items(&self, id: &PackageId, member_root: &MemberRoot) -> ProviderResult<Vec<Item>> {
-        let fingerprint = Self::source_fingerprint(member_root);
-        let cache_key = format!("rust/package-source/{id}/{fingerprint}");
-        if let Ok(c) = self.cache.read() {
-            if let Some((cached_fingerprint, items)) = c.get(id.as_str())
-                && cached_fingerprint == &fingerprint
-            {
-                return Ok(items.clone());
-            }
-        }
-        if let Ok(Some(bytes)) = self.disk_cache.get(&cache_key) {
-            if let Ok(items) = serde_json::from_slice::<Vec<Item>>(&bytes) {
-                if let Ok(mut c) = self.cache.write() {
-                    c.insert(id.as_str().to_string(), (fingerprint, items.clone()));
-                }
-                return Ok(items);
-            }
-        }
-
+    fn package_items(
+        &self,
+        _id: &PackageId,
+        member_root: &MemberRoot,
+    ) -> ProviderResult<Vec<Item>> {
         let (root_file, base_dir) = match member_root {
             MemberRoot::Dir(dir) => {
                 let src = dir.join("src");
@@ -346,12 +313,6 @@ impl RustPackageProvider {
             )?;
         }
 
-        if let Ok(mut c) = self.cache.write() {
-            c.insert(id.as_str().to_string(), (fingerprint, items.clone()));
-        }
-        if let Ok(bytes) = serde_json::to_vec(&items) {
-            let _ = self.disk_cache.put(&cache_key, &bytes);
-        }
         Ok(items)
     }
 }
@@ -796,6 +757,25 @@ impl PackageProvider for RustExternalApiProvider {
     fn resolution_rules(&self) -> fp_core::hir::resolve::ResolutionRules {
         fp_core::hir::resolve::ResolutionRules::rust()
     }
+
+    fn cache_identity(&self, id: &PackageId) -> ProviderResult<String> {
+        let identity = match id.as_str() {
+            CORE_PACKAGE_NAME | ALLOC_PACKAGE_NAME | STD_PACKAGE_NAME | TEST_PACKAGE_NAME => {
+                embedded_source_identity(
+                    crate::embedded_std::root_dir(),
+                    crate::embedded_std::module_paths(),
+                    crate::embedded_std::read,
+                )
+            }
+            LIBC_PACKAGE_NAME => embedded_source_identity(
+                fp_lang::embedded_libc::root_dir(),
+                fp_lang::embedded_libc::module_paths(),
+                fp_lang::embedded_libc::read,
+            ),
+            _ => return Err(ProviderError::PackageNotFound(id.clone())),
+        };
+        Ok(format!("rust-std:{identity}"))
+    }
 }
 
 impl RustStdProvider {
@@ -1187,38 +1167,29 @@ fn is_cfg_test(attrs: &[Attribute]) -> bool {
     })
 }
 
-/// Bump this whenever the Rust AST representation or parser semantics change.
-/// Parsed standard-library source is semantic compiler input, so a cache entry
-/// created by an older parser must never be reused by a newer compiler.
-// Bump when AST lowering, path identity, or parser recovery semantics change,
-// even if the embedded Rust source remains byte-for-byte identical. Cached
-// items carry resolver-visible structure, so source hashing alone is not a
-// sufficient compatibility boundary.
-const STD_PARSE_CACHE_SCHEMA: u8 = 4;
-
 /// Parse every embedded real-std `.rs` file, skipping (with a warning) any
 /// that `RustFrontend` can't handle yet, rather than failing the whole load.
-///
-/// Uses a disk cache whose identity includes the exact embedded source and a
-/// parser schema version. A pre-parsed AST bundled with the executable cannot
-/// safely be reused because it has no source or parser provenance.
+fn embedded_source_identity(
+    root: PathBuf,
+    module_paths: &[&str],
+    read: fn(&Path) -> Option<&'static str>,
+) -> String {
+    let mut identity = Vec::new();
+    for module_path in module_paths {
+        identity.extend_from_slice(module_path.as_bytes());
+        if let Some(source) = read(&root.join(module_path)) {
+            identity.extend_from_slice(source.as_bytes());
+        }
+    }
+    fp_core::cache::digest_bytes(&identity)
+}
+
 fn load_real_std_subcrate(crate_name: &'static str) -> ProviderResult<AstPackage> {
     let package_id = PackageId::new(crate_name);
     let root = crate::embedded_std::root_dir();
     let mut descriptors = Vec::new();
     let mut items = Vec::new();
-    let mut parsed = 0usize;
-    let mut cache_hits = 0usize;
-    let mut disk_misses = 0usize;
-    let mut decode_failures = 0usize;
-    let mut encode_failures = 0usize;
-    let mut write_failures = 0usize;
     let mut skipped = 0usize;
-    let disk_cache = fp_core::cache::DiskCache::new(
-        std::env::var_os("FP_CACHE_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("target/fp")),
-    );
 
     // Real rustc's sysroot vendors `core`/`alloc`/`std` as independent
     // crates (each its own crate root, `std`/`alloc` depending on `core`)
@@ -1248,18 +1219,6 @@ fn load_real_std_subcrate(crate_name: &'static str) -> ProviderResult<AstPackage
     let base_dir = root.join(crate_name);
 
     let mut parse = |path: &Path, source: &str| -> ProviderResult<Vec<Item>> {
-        let relative = path
-            .strip_prefix(&root)
-            .ok()
-            .and_then(|p| p.to_str())
-            .unwrap_or_default()
-            .to_string();
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        source.hash(&mut hasher);
-        let source_hash = hasher.finish();
-        let disk_key = format!(
-            "rust/std-source/v{STD_PARSE_CACHE_SCHEMA}/{crate_name}/{relative}/{source_hash:016x}"
-        );
         // A fresh frontend per file, not one shared across the whole
         // walk — each `.rs` file is its own independent translation
         // unit, and a parser is free to accumulate internal
@@ -1270,32 +1229,10 @@ fn load_real_std_subcrate(crate_name: &'static str) -> ProviderResult<AstPackage
         // state dirty enough to spuriously fail the *next* file's
         // otherwise-valid parse.
         let frontend = RustFrontend::new();
-        match disk_cache.get(&disk_key) {
-            Ok(Some(bytes)) => match serde_json::from_slice::<Vec<Item>>(&bytes) {
-                Ok(cached) => {
-                    frontend.register_file_only(source, path);
-                    cache_hits += 1;
-                    return Ok(cached);
-                }
-                Err(_) => decode_failures += 1,
-            },
-            Ok(None) => disk_misses += 1,
-            Err(_) => disk_misses += 1,
-        }
         match frontend.parse_file(source, path) {
             Ok(result) => {
                 register_threadlocal_serializer(result.serializer.clone());
-                parsed += 1;
-                let items = result.ast.items;
-                match serde_json::to_vec(&items) {
-                    Ok(bytes) => {
-                        if disk_cache.put(&disk_key, &bytes).is_err() {
-                            write_failures += 1;
-                        }
-                    }
-                    Err(_) => encode_failures += 1,
-                }
-                Ok(items)
+                Ok(result.ast.items)
             }
             Err(err) => {
                 skipped += 1;
@@ -1348,9 +1285,7 @@ fn load_real_std_subcrate(crate_name: &'static str) -> ProviderResult<AstPackage
             Some((&package_id, ModuleLanguage::Rust, &mut descriptors)),
         )?;
     }
-    eprintln!(
-        "fp-rust: real {crate_name} parse result — {parsed} file(s) parsed, {cache_hits} from cache, {disk_misses} disk misses, {decode_failures} decode failures, {encode_failures} encode failures, {write_failures} write failures, {skipped} skipped (parse errors)"
-    );
+    eprintln!("fp-rust: real {crate_name} parse result — {skipped} skipped (parse errors)");
 
     let mut metadata = PackageMetadata::default();
     for dependency in RustStdProvider::dependencies_of(crate_name) {

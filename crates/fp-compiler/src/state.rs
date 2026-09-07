@@ -10,6 +10,7 @@ use fp_typing::ComptimeResolver;
 use crate::error::CompilerDriverError;
 
 pub struct CompilerState {
+    pub(crate) cache: fp_core::cache::CacheProvider,
     /// Every package's own HIR published so far this session — mirrors
     /// `mir_program`/`lir_program` below; keyed internally by `hir::PackageId`
     /// (see `HirProgram`'s own shape), not the compiler's surface
@@ -108,7 +109,22 @@ impl CompilerState {
         tasks: ExecutorHandle,
         workspace: Rc<AstProgram>,
     ) -> Self {
+        Self::with_workspace_and_cache(
+            data_layout,
+            tasks,
+            workspace,
+            fp_core::cache::CacheProvider::new(fp_core::cache::CacheConfig::for_current_project()),
+        )
+    }
+
+    pub fn with_workspace_and_cache(
+        data_layout: lir::LirDataLayout,
+        tasks: ExecutorHandle,
+        workspace: Rc<AstProgram>,
+        cache: fp_core::cache::CacheProvider,
+    ) -> Self {
         Self {
+            cache,
             hir_program: Rc::new(RefCell::new(hir::HirProgram::new())),
             mir_program: Rc::new(mir::MirProgram::new()),
             lir_program: Rc::new(lir::LirProgram::new()),
@@ -125,6 +141,10 @@ impl CompilerState {
             tasks,
             interpreter: LirInterpreter::new(),
         }
+    }
+
+    pub fn cache(&self) -> &fp_core::cache::CacheProvider {
+        &self.cache
     }
 
     /// The shared `LirInterpreter` real comptime evaluation runs through —

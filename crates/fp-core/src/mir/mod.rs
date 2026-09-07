@@ -32,13 +32,13 @@ pub type MirId = u32;
 pub type LocalId = u32;
 pub type BasicBlockId = u32;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Item {
     pub mir_id: MirId,
     pub kind: ItemKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ItemKind {
     Function(Function),
     Static(Static),
@@ -46,7 +46,7 @@ pub enum ItemKind {
     Query(Query),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Function {
     /// Already-qualified name used for mangling/diagnostics (module
     /// segments joined with `::`, or bare when the function has no
@@ -65,13 +65,13 @@ pub struct Function {
     pub attrs: Vec<crate::ast::Attribute>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FunctionSig {
     pub inputs: Vec<Ty>,
     pub output: Ty,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Static {
     pub name: Symbol,
     pub ty: Ty,
@@ -79,7 +79,7 @@ pub struct Static {
     pub mutability: Mutability,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExecutableConst {
     pub name: Symbol,
     pub function_name: Symbol,
@@ -104,17 +104,17 @@ pub struct ExecutableConst {
     pub const_block_hir_id: Option<crate::hir::HirId>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Query {
     pub origin: QueryOrigin,
     pub ir: QueryIrDocument,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct BodyId(pub u32);
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Body {
     pub basic_blocks: Vec<BasicBlockData>,
     pub locals: Vec<LocalDecl>,
@@ -124,20 +124,20 @@ pub struct Body {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BasicBlockData {
     pub statements: Vec<Statement>,
     pub terminator: Option<Terminator>,
     pub is_cleanup: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Statement {
     pub source_info: SourceInfo,
     pub kind: StatementKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum StatementKind {
     Assign(Place, Rvalue),
     IntrinsicCall {
@@ -156,13 +156,13 @@ pub enum StatementKind {
     Nop,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Terminator {
     pub source_info: SourceInfo,
     pub kind: TerminatorKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TerminatorKind {
     Goto {
         target: BasicBlockId,
@@ -227,14 +227,14 @@ pub enum TerminatorKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SwitchTargets {
     pub values: Vec<u128>,
     pub targets: Vec<BasicBlockId>,
     pub otherwise: BasicBlockId,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Rvalue {
     Use(Operand),
     /// A completed comptime type result used as a `type`-typed value.
@@ -302,20 +302,20 @@ pub enum Rvalue {
     ShallowInitBox(Operand, Ty),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Operand {
     Copy(Place),
     Move(Place),
     Constant(Constant),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Place {
     pub local: LocalId,
     pub projection: Vec<PlaceElem>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum PlaceElem {
     Deref,
     Field(FieldIdx, Ty),
@@ -333,7 +333,7 @@ pub enum PlaceElem {
     Downcast(Option<Symbol>, VariantIdx),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Constant {
     pub span: Span,
     /// The authoritative type of this constant operand. Like rustc's
@@ -344,7 +344,7 @@ pub struct Constant {
     pub literal: ConstantKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ConstantKind {
     Ty(ConstTy),
     Val(ConstValue),
@@ -370,7 +370,7 @@ pub enum ConstantKind {
     Str(String),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LocalDecl {
     pub mutability: Mutability,
     pub local_info: LocalInfo,
@@ -381,7 +381,7 @@ pub struct LocalDecl {
     pub source_info: SourceInfo,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LocalInfo {
     User(ClearCrossCrate<BindingForm>),
     StaticRef {
@@ -391,40 +391,40 @@ pub enum LocalInfo {
     Other,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VarDebugInfo {
     pub name: Symbol,
     pub source_info: SourceInfo,
     pub value: VarDebugInfoContents,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum VarDebugInfoContents {
     Place(Place),
     Const(Constant),
 }
 
 // Type definitions and placeholders
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Mutability {
     Mut,
     Not,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum BorrowKind {
     Shared,
     Mut { allow_two_phase_borrow: bool },
     Unique,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum CastKind {
     Misc,
     Pointer(PointerCast),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum PointerCast {
     ReifyFnPointer,
     UnsafeFnPointer,
@@ -434,7 +434,7 @@ pub enum PointerCast {
     Unsize,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum BinOp {
     Add,
     Sub,
@@ -457,20 +457,20 @@ pub enum BinOp {
     Offset,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum UnOp {
     Not,
     Neg,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum NullOp {
     Box,
     SizeOf,
     AlignOf,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum AggregateKind {
     Array(Ty),
     Tuple,
@@ -484,7 +484,7 @@ pub enum AggregateKind {
     Generator(DefId, SubstsRef, Movability),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ContainerKind {
     /// Runtime sequence operations. The element count and type describe the
     /// operation; constant sequence payloads use `ConstValue::Array`.
@@ -499,7 +499,7 @@ pub enum ContainerKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum RetagKind {
     FnEntry,
     TwoPhase,
@@ -507,7 +507,7 @@ pub enum RetagKind {
     Default,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum AssertMessage {
     BoundsCheck { len: Operand, index: Operand },
     Overflow(BinOp, Operand, Operand),
@@ -520,7 +520,7 @@ pub enum AssertMessage {
     GeneratorResumedAfterPanic,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockTailInfo {
     pub tail_result_is_ignored: bool,
     pub span: Span,
@@ -547,7 +547,7 @@ pub type InlineAsmTemplatePiece = String; // Placeholder
 pub type InlineAsmOperand = (); // Placeholder
 pub type InlineAsmOptions = u32; // Placeholder
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ConstValue {
     Unit,
     Bool(bool),
@@ -599,7 +599,7 @@ impl Body {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LocalKind {
     Arg,
     Var,

@@ -106,7 +106,7 @@ pub struct PackageItem {
     pub item: Item,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PackagePath {
     pub package_id: PackageId,
     pub path: InPackagePath,
