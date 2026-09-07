@@ -1762,12 +1762,21 @@ impl HirTypeChecker {
                 // both branches. Rustc uses this context to infer
                 // unsuffixed literals in branch tails (for example the
                 // `1.0` returned by a floating-point `signum` method).
-                let then_ty = match self.expected_expr_type.clone() {
-                    Some(expected) => self
-                        .with_expected_expr_type(expected)
+                // An `if` without `else` is a statement expression in Rust:
+                // its then branch is checked in unit context, regardless of
+                // any expected type for the enclosing expression.
+                let then_ty = if else_expr.is_none() {
+                    self.with_expected_expr_type(self.unit_ty())
                         .check_expr(then_expr)
-                        .await?,
-                    None => self.check_expr(then_expr).await?,
+                        .await?
+                } else {
+                    match self.expected_expr_type.clone() {
+                        Some(expected) => self
+                            .with_expected_expr_type(expected)
+                            .check_expr(then_expr)
+                            .await?,
+                        None => self.check_expr(then_expr).await?,
+                    }
                 };
                 let mut result_ty = then_ty;
                 if let Some(else_expr) = else_expr {
@@ -6447,10 +6456,40 @@ impl HirTypeChecker {
         let hir::Res::Def(ref variant_id) = path.res else {
             return Ok(None);
         };
-        let Some((item, _)) = self.enum_variant_by_def_id(variant_id.clone()) else {
+        let Some((item, variant)) = self.enum_variant_by_def_id(variant_id.clone()) else {
             return Ok(None);
         };
-        Ok(Some(self.enum_item_ty(&item, path).await?))
+        let enum_ty = self.enum_item_ty(&item, path).await?;
+        let Some(payload) = &variant.payload else {
+            return Ok(Some(enum_ty));
+        };
+        let hir::ItemKind::Enum(enum_def) = &item.kind else {
+            return Ok(None);
+        };
+        let TyKind::Adt(_, args) = &enum_ty.kind else {
+            return Ok(None);
+        };
+        let mut scope = self.with_generics(&enum_def.generics);
+        let payload_ty = scope.check_type_expr(payload).await?;
+        let payload_ty = scope.substitute_params(payload_ty, args, &enum_def.generics.params);
+        let inputs = match payload_ty.kind {
+            TyKind::Tuple(fields) => fields,
+            _ => vec![Box::new(payload_ty)],
+        };
+        Ok(Some(Ty {
+            kind: TyKind::FnPtr(ty::PolyFnSig {
+                binder: ty::Binder {
+                    value: ty::FnSig {
+                        inputs,
+                        output: Box::new(enum_ty),
+                        c_variadic: false,
+                        unsafety: ty::Unsafety::Normal,
+                        abi: ty::Abi::Rust,
+                    },
+                    bound_vars: Vec::new(),
+                },
+            }),
+        }))
     }
 
     fn enum_variant_by_def_id(
