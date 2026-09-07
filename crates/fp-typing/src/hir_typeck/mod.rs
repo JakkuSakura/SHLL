@@ -3906,6 +3906,24 @@ impl HirTypeChecker {
             .or_else(|| qpath.path())
             .expect("resolved QPath always carries an ordinary path");
         tracing::debug!(?path, "expr_path_ty");
+        // Lowering may retain the owning enum's `DefId` on a variant path
+        // (`Option::Some`, `Result::Ok`) instead of the variant's own id.
+        // Rustc still resolves the final segment in the value namespace as
+        // the variant constructor, so recover that constructor before
+        // treating the path as an enum type value.
+        if path.segments.len() >= 2
+            && let hir::Res::Def(enum_id) = path.res_ref()
+            && let Some(item) = self.program_rc().item(enum_id.clone())
+            && matches!(&item.kind, hir::ItemKind::Enum(_))
+        {
+            let enum_ty = self.enum_item_ty(&item, path).await?;
+            if let Some(ctor) = self
+                .self_enum_variant_constructor(&enum_ty, &path.segments[path.segments.len() - 1].ident)
+                .await?
+            {
+                return Ok(ctor);
+            }
+        }
         // A multi-segment `Self::` value path is an associated
         // function/method called via `Self::name(..)` (e.g. `Self::new()`,
         // or a default trait method calling a sibling via
