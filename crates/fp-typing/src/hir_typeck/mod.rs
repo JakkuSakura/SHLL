@@ -1645,6 +1645,9 @@ impl HirTypeChecker {
                 while let TyKind::Ref(_, inner, _) = &receiver_ty.kind {
                     receiver_ty = inner;
                 }
+                if ty_contains_error(receiver_ty) {
+                    return Ok(receiver_ty.clone());
+                }
                 let ty = match &receiver_ty.kind {
                     TyKind::Array(inner, _) | TyKind::Slice(inner) => {
                         // Integer locals default to `i64` here, while rustc
@@ -2252,6 +2255,9 @@ impl HirTypeChecker {
                 let mut base_ty = &base_ty;
                 while let TyKind::Ref(_, inner, _) = &base_ty.kind {
                     base_ty = inner;
+                }
+                if ty_contains_error(base_ty) {
+                    return Ok(base_ty.clone());
                 }
                 Ok::<_, fp_core::error::Error>(match &base_ty.kind {
                     TyKind::Array(inner, _) => Ty {
