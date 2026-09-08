@@ -382,10 +382,20 @@ mod tests {
 
         let packages = provider.list_packages()?;
         assert_eq!(packages.len(), 1);
-        let package_id = packages[0].clone();
 
-        let source = provider.load_package_source(&package_id)?;
-        assert!(source.items().len() >= 2);
+        let modules = provider.modules.read().unwrap();
+        let mut sources = modules
+            .values()
+            .map(|module| module.source.to_path_buf())
+            .collect::<Vec<_>>();
+        sources.sort();
+        assert_eq!(
+            sources,
+            vec![
+                PathBuf::from("src/lib.ts"),
+                PathBuf::from("src/util/helpers.tsx"),
+            ]
+        );
         Ok(())
     }
 
