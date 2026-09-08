@@ -1408,9 +1408,7 @@ impl HirTypeChecker {
                             }
                             match &item.kind {
                                 hir::TraitItemKind::Method(function) => function.body.is_some(),
-                                hir::TraitItemKind::AssocConst(constant) => {
-                                    constant.body.is_some()
-                                }
+                                hir::TraitItemKind::AssocConst(constant) => constant.body.is_some(),
                                 hir::TraitItemKind::AssocType(_) => false,
                             }
                         }),
@@ -1536,9 +1534,7 @@ impl HirTypeChecker {
                                     return Ok(signature);
                                 }
                             }
-                            hir::TraitItemKind::AssocConst(constant)
-                                if constant.body.is_some() =>
-                            {
+                            hir::TraitItemKind::AssocConst(constant) if constant.body.is_some() => {
                                 let mut substitutions = HashMap::new();
                                 if scope
                                     .unify_call_types_probe(
