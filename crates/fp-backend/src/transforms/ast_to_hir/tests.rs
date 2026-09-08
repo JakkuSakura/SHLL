@@ -5738,18 +5738,14 @@ mod function_body_resolution {
                 _ => None,
             })
             .expect("get method");
-        let hir::ExprKind::Path(path) = &body_expr(method).kind else {
-            panic!("expected self field path: {:?}", body_expr(method));
+        let hir::ExprKind::FieldAccess(receiver, field) = &body_expr(method).kind else {
+            panic!("expected runtime self field access: {:?}", body_expr(method));
+        };
+        let hir::ExprKind::Path(path) = &receiver.kind else {
+            panic!("expected self field receiver path: {receiver:?}");
         };
         assert!(matches!(path.res(), hir::Res::Local(_)), "path: {path:?}");
-        assert_eq!(
-            path.segments()
-                .last()
-                .expect("self field path segment")
-                .ident
-                .as_str(),
-            "field"
-        );
+        assert_eq!(field.as_str(), "field");
     }
 
     #[test]

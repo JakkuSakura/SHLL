@@ -767,73 +767,6 @@ impl AstToHirLowerer {
     ) -> Result<hir::ExprKind> {
         match &invoke.target {
             ast::ExprInvokeTarget::Method(select) => {
-                let receiver_can_be_type_path = match select.obj.kind() {
-                    ast::ExprKind::Name(_) | ast::ExprKind::FieldAccess(_) => true,
-                    ast::ExprKind::Invoke(receiver) => {
-                        matches!(receiver.target, ast::ExprInvokeTarget::Type(_))
-                    }
-                    _ => false,
-                };
-                if receiver_can_be_type_path
-                    && let Some(segments) = self.path_segments_from_expr(&select.obj)
-                {
-                    let root_is_runtime_value = segments.first().is_some_and(|segment| {
-                        segment.name.as_str() == "self"
-                            || self.resolve_lexical_value_symbol(&segment.name).is_some()
-                    });
-                    if !root_is_runtime_value {
-                        // Lower the original expression instead of rebuilding
-                        // a name from `path_segments_from_expr`. The latter is
-                        // intentionally only a shape probe and cannot retain
-                        // generic arguments on `Path` segments. Rustc
-                        // keeps those arguments on the resolved QPath head,
-                        // and type-directed associated-item lookup needs them
-                        // for `Vec::<T>::from`, `Arc::<T>::new`, and the like.
-                        let base_path = self.ast_expr_to_hir_path(
-                            &select.obj,
-                            PathResolutionScope::Type,
-                            ParamMode::Optional,
-                        )?;
-                        if matches!(
-                            base_path.res(),
-                            hir::Res::Def(_) | hir::Res::Builtin(_) | hir::Res::SelfTy
-                        ) {
-                            // This is rustc's `QPath::TypeRelative` shape:
-                            // the resolver has established the nominal/type
-                            // base, while associated-item selection remains
-                            // type-directed. Re-resolving the joined spelling
-                            // as a value path can lose `Vec`/`String`'s type
-                            // `Res` (or bind a same-named module), which then
-                            // makes the type checker report an unresolved
-                            // value path instead of selecting the impl item.
-                            let member_args = select
-                                .generic_args
-                                .as_ref()
-                                .map(|args| self.convert_path_arguments(args))
-                                .transpose()?;
-                            let receiver = hir::TypeExpr::new(
-                                self.next_id(),
-                                hir::TypeExprKind::Path(base_path),
-                                select.obj.span(),
-                            );
-                            let path = hir::QPath::type_relative(
-                                receiver,
-                                self.make_path_segment(
-                                    &select.field.name,
-                                    member_args,
-                                    ParamMode::Optional,
-                                ),
-                            );
-                            let func_expr = hir::Expr {
-                                hir_id: self.next_id(),
-                                kind: hir::ExprKind::Path(path),
-                                span: self.create_span(1),
-                            };
-                            let args = self.transform_call_args_strict(&invoke.args)?;
-                            return Ok(hir::ExprKind::Call(Box::new(func_expr), args));
-                        }
-                    }
-                }
                 let receiver = self.transform_expr_to_hir(&select.obj)?;
                 let generic_args = select
                     .generic_args
@@ -938,26 +871,6 @@ impl AstToHirLowerer {
         &mut self,
         select: &ast::ExprFieldAccess,
     ) -> Result<hir::ExprKind> {
-        // A `::name` select (`u8::MAX`, `Map::SOME_CONST`) — syntactically
-        // identical to `.name` in this parser (both fold into `FieldAccess`;
-        // see `Postfix::ConstField`'s doc comment), but semantically a
-        // *path* continuation, never a runtime field access. Build it the
-        // same way a call's callee/a struct literal's name already does
-        // (`ast_expr_to_hir_path`), rather than always lowering to
-        // `FieldAccess` — the previous unconditional `FieldAccess` here
-        // left every non-call, non-struct use of `Type::CONST` (an
-        // ordinary value read, not immediately called) permanently
-        // unresolvable, since a plain runtime field access has no notion
-        // of a type-relative base at all.
-        if let ast::ExprKind::Name(_) = select.obj.kind() {
-            let path_expr = ast::Expr::new(ast::ExprKind::FieldAccess(select.clone()));
-            let path = self.ast_expr_to_hir_path(
-                &path_expr,
-                PathResolutionScope::Value,
-                ParamMode::Optional,
-            )?;
-            return Ok(hir::ExprKind::Path(path));
-        }
         let expr = Box::new(self.transform_expr_to_hir(&select.obj)?);
         let field = select.field.clone().into();
 
