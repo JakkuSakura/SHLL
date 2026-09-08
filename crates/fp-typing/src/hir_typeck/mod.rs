@@ -2096,7 +2096,29 @@ impl HirTypeChecker {
             }),
             hir::ExprKind::Assign(lhs, rhs) => Box::pin(async move {
                 let lhs_expr = lhs;
-                let lhs = self.check_expr(lhs_expr).await?;
+                // For an indexed local array whose element type is still an
+                // integer inference default, rustc uses the assigned value
+                // to constrain the element before checking the place
+                // expression. Check that RHS first so `let mut a = [0; N];
+                // a[0] = u32_value` refines `[i64; N]` to `[u32; N]`
+                // without emitting a spurious mismatch for the stale LHS.
+                let indexed_local = matches!(
+                    &lhs_expr.kind,
+                    hir::ExprKind::Index(base, _)
+                        if matches!(base.kind, hir::ExprKind::Path(hir::QPath::Resolved(None, _)))
+                );
+                let indexed_rhs = if indexed_local {
+                    let rhs_ty = self.check_expr(rhs).await?;
+                    self.refine_indexed_local_element(lhs_expr, &rhs_ty);
+                    Some(rhs_ty)
+                } else {
+                    None
+                };
+                let lhs = if indexed_local {
+                    self.check_expr(lhs_expr).await?
+                } else {
+                    self.check_expr(lhs_expr).await?
+                };
                 // Give the RHS the same expected-type hint `ConstBlock`
                 // already provides its body: a zero-arg generic call
                 // like `Vec::new()` has no argument types to infer `T`
@@ -2104,12 +2126,16 @@ impl HirTypeChecker {
                 // `require_same` below fails a plain reassignment like
                 // `self.keys = Vec::new();` even though the field's own
                 // declared type unambiguously determines `T`.
-                let rhs = self
-                    .with_expected_expr_type(lhs.clone())
-                    .check_expr(rhs)
-                    .await;
-                let rhs = rhs?;
-                self.refine_indexed_local_element(lhs_expr, &rhs);
+                let rhs = if indexed_local {
+                    // The RHS was checked above to drive indexed-local
+                    // inference; retain that result rather than evaluating
+                    // the expression twice.
+                    indexed_rhs.expect("indexed assignment RHS was prechecked")
+                } else {
+                    self.with_expected_expr_type(lhs.clone())
+                        .check_expr(rhs)
+                        .await?
+                };
                 // `unify_call_types`, not `require_same`: an assignment
                 // target's type should accept a value the same way a
                 // call parameter of that type would (e.g. `self.field =
@@ -3913,7 +3939,7 @@ impl HirTypeChecker {
         let hir::ExprKind::Path(hir::QPath::Resolved(None, path)) = &base.kind else {
             return;
         };
-        let hir::Res::Local(_) = path.res_ref() else {
+        let hir::Res::Local(local_id) = path.res_ref() else {
             return;
         };
         let Some(name) = path.segments().last().map(|segment| &segment.ident) else {
@@ -3928,12 +3954,11 @@ impl HirTypeChecker {
         if !matches!(element.kind, TyKind::Int(_) | TyKind::Uint(_)) {
             return;
         }
-        self.locals.insert(
-            name.clone(),
-            Ty {
-                kind: TyKind::Array(Box::new(rhs.clone()), length),
-            },
-        );
+        let refined = Ty {
+            kind: TyKind::Array(Box::new(rhs.clone()), length),
+        };
+        self.locals.insert(name.clone(), refined.clone());
+        self.program_rc().record_pat_type(local_id.clone(), refined);
     }
 
     /// Finds a real struct definition by name, searching this package first
