@@ -2537,6 +2537,14 @@ impl HirTypeChecker {
             if formatter_append {
                 return Ok(self.unit_ty());
             }
+            // Keep an earlier receiver error authoritative. Rustc still
+            // checks the argument expressions for recovery, but does not
+            // emit a cascading "method not found" error for an `Error`
+            // receiver (the bignum `carrying_add` calls commonly reach this
+            // path after a lossy iterator expression has already failed).
+            if ty_contains_error(&receiver_ty) {
+                return Ok(receiver_ty);
+            }
             match self
                 .method_output(
                     &receiver_ty,
