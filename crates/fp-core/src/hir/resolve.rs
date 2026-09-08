@@ -292,9 +292,6 @@ impl Binding {
         }
     }
 
-    fn same_target(&self, other: &Self) -> bool {
-        self == other
-    }
 }
 
 impl ModuleData {
