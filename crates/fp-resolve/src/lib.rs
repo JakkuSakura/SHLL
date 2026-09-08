@@ -514,6 +514,21 @@ impl Resolver {
                 match result {
                     ResolutionResult::Found(path) => {
                         let resolved = path.res.clone();
+                        if let hir::Res::Def(def_id) = &resolved {
+                            if let Some(item) = hir_program.item(def_id.clone()) {
+                                if let hir::ItemKind::Function(function) = &item.kind {
+                                    if function.sig.name.as_str() != segment.ident.as_str() {
+                                        return ResolutionResult::NotFound(
+                                            ResolutionNotFound::Symbol {
+                                                module: InPackagePath::new(Vec::new()),
+                                                symbol: segment.ident.as_str().into(),
+                                                namespace,
+                                            },
+                                        );
+                                    }
+                                }
+                            }
+                        }
                         resolved_segments.push(hir::PathSegment {
                             ident: segment.ident.name.clone().into(),
                             hir_id: Default::default(),
