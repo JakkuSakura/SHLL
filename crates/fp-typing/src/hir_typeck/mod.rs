@@ -3373,6 +3373,30 @@ impl HirTypeChecker {
                 if let Some(primitive) = primitive_path_ty(path.segments[0].ident.as_str()) {
                     return Ok(primitive);
                 }
+                // Range literals are lowered as bare struct paths. Older
+                // resolver output can leave that path without a `DefId`,
+                // but the program's indexed struct table still carries the
+                // canonical definition used by field and method lookup.
+                if let Some(def_id) = self.well_known_struct_def_id(path.segments[0].ident.as_str())
+                {
+                    return Ok(Ty {
+                        kind: TyKind::Adt(
+                            AdtDef {
+                                did: def_id,
+                                variants: Vec::new(),
+                                flags: AdtFlags::IS_STRUCT,
+                                repr: ReprOptions {
+                                    int: None,
+                                    align: None,
+                                    pack: None,
+                                    flags: ReprFlags::empty(),
+                                    field_shuffle_seed: 0,
+                                },
+                            },
+                            Vec::new(),
+                        ),
+                    });
+                }
             }
             // `<usize as Add>::Output`-style UFCS paths whose base is a
             // primitive still have no nominal `DefId` (`usize` is a builtin,
