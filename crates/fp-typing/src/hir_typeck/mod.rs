@@ -6464,10 +6464,10 @@ impl HirTypeChecker {
     }
 
     async fn field_ty(&mut self, receiver: &Ty, field: &hir::Symbol) -> Result<Ty> {
-        let receiver = match &receiver.kind {
-            TyKind::Ref(_, inner, _) => inner.as_ref(),
-            _ => receiver,
-        };
+        let mut receiver = receiver;
+        while let TyKind::Ref(_, inner, _) = &receiver.kind {
+            receiver = inner;
+        }
         // A plain (non-`Adt`) tuple type has no struct fields, but its own
         // numeric field-access syntax (`.0`, `.1`, ...) reaches this same
         // `field_ty` call — HIR apparently has no separate "tuple index"
