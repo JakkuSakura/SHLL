@@ -953,8 +953,15 @@ pub(crate) fn parse_number(input: &mut &[Token]) -> ModalResult<Expr> {
     let (value, ty) = parse_numeric_literal_local(&token.lexeme)
         .map_err(|_| ErrMode::Cut(ContextError::new()))?;
     let node = Expr::value(value).with_span(token_span_to_span(&token));
-    let _ = ty;
-    Ok(node)
+    match ty {
+        Some(ty) => Ok(ExprKind::Cast(ExprCast {
+            span: token_span_to_span(&token),
+            expr: Box::new(node),
+            ty,
+        })
+        .into()),
+        None => Ok(node),
+    }
 }
 
 pub(crate) fn parse_string(input: &mut &[Token], file: FileId) -> ModalResult<Expr> {
