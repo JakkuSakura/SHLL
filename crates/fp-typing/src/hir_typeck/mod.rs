@@ -6382,6 +6382,9 @@ impl HirTypeChecker {
                     }
                 }
                 hir::PatKind::Tuple(patterns) => {
+                    if ty_contains_error(&adt_ty) {
+                        return Ok(());
+                    }
                     let TyKind::Tuple(fields) = adt_ty.kind else {
                         self.record_error("tuple pattern requires a tuple scrutinee");
                         return Ok(());
@@ -6428,6 +6431,9 @@ impl HirTypeChecker {
                     }
                 }
                 hir::PatKind::TupleStruct(path, patterns) => {
+                    if ty_contains_error(&adt_ty) {
+                        return Ok(());
+                    }
                     let (_, payloads) = self
                         .variant_payload_types_for_qpath(path, &adt_ty)
                         .await?;
