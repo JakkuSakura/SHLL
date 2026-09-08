@@ -237,6 +237,14 @@ fn type_checks_rust_std_packages_without_stopping_at_first_error() {
             .borrow()
             .diagnostics
             .get_diagnostics();
+        if package_id.as_str() == "core" {
+            assert!(
+                diagnostics
+                    .iter()
+                    .all(|diagnostic| !diagnostic.message.contains("carrying_add not found")),
+                "core type checking regressed carrying_add method recovery"
+            );
+        }
         let error_count = diagnostics
             .iter()
             .filter(|diagnostic| diagnostic.level == DiagnosticLevel::Error)
