@@ -62,24 +62,6 @@ impl AstToHirLowerer {
         }
     }
 
-    /// Rebuild an ordinary source path from the expression shape used by the
-    /// parser for `::` selections. This is intentionally limited to names and
-    /// field accesses: calls and runtime member access are not paths.
-    fn parsed_path_from_expr(&self, expr: &ast::Expr) -> Option<ast::Path> {
-        match expr.kind() {
-            ast::ExprKind::Name(name) => Some(name.path.clone()),
-            ast::ExprKind::FieldAccess(select) => {
-                let mut path = self.parsed_path_from_expr(&select.obj)?;
-                path.segments.push(ast::PathSegment::new(
-                    select.field.clone(),
-                    select.generic_args.clone(),
-                ));
-                Some(path)
-            }
-            _ => None,
-        }
-    }
-
     pub(super) fn convert_path_arguments(
         &mut self,
         arguments: &ast::GenericArgs,
@@ -736,19 +718,6 @@ impl AstToHirLowerer {
                     _ => PathResolutionScope::Type,
                 };
                 let type_base = self.ast_expr_to_hir_path(&select.obj, base_scope, param_mode)?;
-                if matches!(type_base.res(), hir::Res::Module(_)) {
-                    // Rustc resolves the whole module-qualified path before
-                    // lowering it to HIR. `::` is parsed here as a chain of
-                    // field accesses, so resolving only `cmp` and making
-                    // `Ordering` type-relative would discard the final
-                    // definition identity. Type-relative paths are only for
-                    // a receiver that is actually a type or projection.
-                    let path = self.parsed_path_from_expr(expr).ok_or_else(|| {
-                        "module-qualified selection is not path-shaped".to_string()
-                    })?;
-                    let path_expr = ast::Expr::new(ast::ExprKind::Name(ast::Name::path(path)));
-                    return self.ast_expr_to_hir_path(&path_expr, scope, param_mode);
-                }
                 let member_args = select
                     .generic_args
                     .as_ref()
