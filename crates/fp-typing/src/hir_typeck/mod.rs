@@ -2094,8 +2094,9 @@ impl HirTypeChecker {
                     kind: TyKind::Tuple(element_types),
                 })
             }),
-            hir::ExprKind::Assign(lhs, rhs) => Box::pin(async {
-                let lhs = self.check_expr(lhs).await?;
+            hir::ExprKind::Assign(lhs, rhs) => Box::pin(async move {
+                let lhs_expr = lhs;
+                let lhs = self.check_expr(lhs_expr).await?;
                 // Give the RHS the same expected-type hint `ConstBlock`
                 // already provides its body: a zero-arg generic call
                 // like `Vec::new()` has no argument types to infer `T`
@@ -2108,6 +2109,7 @@ impl HirTypeChecker {
                     .check_expr(rhs)
                     .await;
                 let rhs = rhs?;
+                self.refine_indexed_local_element(lhs_expr, &rhs);
                 // `unify_call_types`, not `require_same`: an assignment
                 // target's type should accept a value the same way a
                 // call parameter of that type would (e.g. `self.field =
@@ -3899,6 +3901,39 @@ impl HirTypeChecker {
         self.error_ty(format!(
             "`for` loop iterator must be Vec/array/slice-shaped, found `{iter_ty}`"
         ))
+    }
+
+    fn refine_indexed_local_element(&mut self, lhs: &hir::Expr, rhs: &Ty) {
+        if !matches!(rhs.kind, TyKind::Int(_) | TyKind::Uint(_)) {
+            return;
+        }
+        let hir::ExprKind::Index(base, _) = &lhs.kind else {
+            return;
+        };
+        let hir::ExprKind::Path(hir::QPath::Resolved(None, path)) = &base.kind else {
+            return;
+        };
+        let hir::Res::Local(_) = path.res_ref() else {
+            return;
+        };
+        let Some(name) = path.segments().last().map(|segment| &segment.ident) else {
+            return;
+        };
+        let Some(Ty {
+            kind: TyKind::Array(element, length),
+        }) = self.locals.get(name).cloned()
+        else {
+            return;
+        };
+        if !matches!(element.kind, TyKind::Int(_) | TyKind::Uint(_)) {
+            return;
+        }
+        self.locals.insert(
+            name.clone(),
+            Ty {
+                kind: TyKind::Array(Box::new(rhs.clone()), length),
+            },
+        );
     }
 
     /// Finds a real struct definition by name, searching this package first
