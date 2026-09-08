@@ -1960,7 +1960,10 @@ impl HirTypeChecker {
                 // so it's pushed/popped here rather than delegated to
                 // `check_block`, which only scopes the body itself.
                 let iter_ty = self.check_expr(iter).await?;
-                let elem_ty = self.for_loop_element_ty(&iter_ty).await;
+                let elem_ty = match self.zip_loop_element_ty(iter) {
+                    Some(elem_ty) => elem_ty,
+                    None => self.for_loop_element_ty(&iter_ty).await,
+                };
                 let mut scope = self.with_fresh_block_scope();
                 scope.bind_pattern(pat, elem_ty).await?;
                 scope.check_block(body).await?;
@@ -3815,6 +3818,44 @@ impl HirTypeChecker {
                 self.for_loop_element_ty_fallback_error(&iter_ty)
             }
         }
+    }
+
+    /// Recover the element tuple of `iter::zip` when lossy HIR could not
+    /// resolve the helper function itself. The call arguments have already
+    /// been checked and recorded, so this does not re-check or invent a
+    /// method candidate; it only mirrors rustc's tuple construction from two
+    /// array/slice iterators.
+    fn zip_loop_element_ty(&self, iter: &hir::Expr) -> Option<Ty> {
+        let hir::ExprKind::Call(callee, args) = &iter.kind else {
+            return None;
+        };
+        let hir::ExprKind::Path(path) = &callee.kind else {
+            return None;
+        };
+        if path.segments().last()?.ident.as_str() != "zip" || args.len() != 2 {
+            return None;
+        }
+        let elements = args
+            .iter()
+            .map(|arg| self.package().expr_type(arg.value.hir_id.clone()))
+            .map(|arg_ty| match arg_ty?.kind {
+                TyKind::Ref(_, inner, mutability) => match inner.kind {
+                    TyKind::Array(element, _) | TyKind::Slice(element) => Some(Ty {
+                        kind: TyKind::Ref(
+                            ty::Region::ReErased,
+                            element,
+                            mutability,
+                        ),
+                    }),
+                    _ => None,
+                },
+                TyKind::Array(element, _) | TyKind::Slice(element) => Some(*element),
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>()?;
+        Some(Ty {
+            kind: TyKind::Tuple(elements.into_iter().map(Box::new).collect()),
+        })
     }
 
     fn for_loop_element_ty_fallback_error(&self, iter_ty: &Ty) -> Ty {
