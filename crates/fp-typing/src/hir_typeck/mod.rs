@@ -2575,10 +2575,13 @@ impl HirTypeChecker {
                             Some(TyKind::Int(_) | TyKind::Uint(_))
                         )
                     {
-                        param_hint.expect("integer argument requires a parameter type")
+                        param_hint.clone().expect("integer argument requires a parameter type")
                     } else {
                         actual
                     };
+                if let Some(hint) = param_hint.as_ref() {
+                    self.refine_integer_local(&arg.value, hint);
+                }
                 arg_types.push(actual);
             }
             let formatter_append = method.as_str() == "append"
@@ -3971,6 +3974,29 @@ impl HirTypeChecker {
         };
         self.locals.insert(name.clone(), refined.clone());
         self.program_rc().record_pat_type(local_id.clone(), refined);
+    }
+
+    fn refine_integer_local(&mut self, expr: &hir::Expr, expected: &Ty) {
+        if !matches!(expected.kind, TyKind::Int(_) | TyKind::Uint(_)) {
+            return;
+        }
+        let hir::ExprKind::Path(hir::QPath::Resolved(_, path)) = &expr.kind else {
+            return;
+        };
+        let (hir::Res::Local(local_id) | hir::Res::Parameter(local_id)) = path.res_ref() else {
+            return;
+        };
+        let Some(name) = path.segments().last().map(|segment| &segment.ident) else {
+            return;
+        };
+        let Some(current) = self.locals.get(name) else {
+            return;
+        };
+        if !matches!(current.kind, TyKind::Int(_) | TyKind::Uint(_)) {
+            return;
+        }
+        self.locals.insert(name.clone(), expected.clone());
+        self.program_rc().record_pat_type(local_id.clone(), expected.clone());
     }
 
     /// Finds a real struct definition by name, searching this package first
