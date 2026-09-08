@@ -296,6 +296,91 @@ fn array_index_literal_infers_usize() {
 }
 
 #[test]
+fn array_index_integer_local_preserves_element_type() {
+    let index_local_id = hid(26);
+    let index_expr_id = hid(27);
+    let value_expr_id = hid(28);
+    let item = hir::Item {
+        hir_id: hid(29),
+        def_id: hir::DefId::local(3),
+        visibility: hir::Visibility::Private,
+        kind: hir::ItemKind::Expr(hir::Expr {
+            hir_id: hid(30),
+            kind: hir::ExprKind::Block(hir::Block {
+                hir_id: hid(31),
+                stmts: vec![hir::Stmt {
+                    hir_id: hid(32),
+                    kind: hir::StmtKind::Local(hir::Local {
+                        hir_id: hid(33),
+                        pat: hir::Pat {
+                            hir_id: hid(34),
+                            kind: hir::PatKind::Binding {
+                                name: "i".into(),
+                                mutable: false,
+                            },
+                        },
+                        ty: Some(hir::TypeExpr {
+                            hir_id: hid(35),
+                            kind: hir::TypeExprKind::Infer,
+                            span: fp_core::span::Span::null(),
+                        }),
+                        init: Some(hir::Expr {
+                            hir_id: index_local_id.clone(),
+                            kind: hir::ExprKind::Literal(hir::Lit::Integer(0)),
+                            span: fp_core::span::Span::null(),
+                        }),
+                    }),
+                }],
+                expr: Some(Box::new(hir::Expr {
+                    hir_id: value_expr_id,
+                    kind: hir::ExprKind::Index(
+                        Box::new(hir::Expr {
+                            hir_id: hid(36),
+                            kind: hir::ExprKind::Array(vec![hir::Expr {
+                                hir_id: hid(37),
+                                kind: hir::ExprKind::Literal(hir::Lit::Integer(1)),
+                                span: fp_core::span::Span::null(),
+                            }]),
+                            span: fp_core::span::Span::null(),
+                        }),
+                        Box::new(hir::Expr {
+                            hir_id: index_expr_id,
+                            kind: hir::ExprKind::Path(hir::QPath::resolved(hir::Path {
+                                span: fp_core::span::Span::null(),
+                                segments: vec![hir::PathSegment {
+                                    ident: "i".into(),
+                                    hir_id: Default::default(),
+                                    args: None,
+                                    infer_args: true,
+                                    delegation_child_segment: false,
+                                    res: hir::Res::Local(hid(34)),
+                                }],
+                                res: hir::Res::Local(hid(34)),
+                            })),
+                            span: fp_core::span::Span::null(),
+                        }),
+                    ),
+                    span: fp_core::span::Span::null(),
+                })),
+            }),
+            span: fp_core::span::Span::null(),
+        }),
+        span: fp_core::span::Span::null(),
+    };
+    let mut package = hir::HirPackage::new(test_pkg());
+    package.def_map.insert(item.def_id.clone(), item.clone());
+    package.items.push(item);
+    let executor = fp_core::executor::CompilerExecutor::new().handle();
+    let result = executor
+        .run(typecheck_program(package, executor.clone()))
+        .expect("HIR type check");
+    assert_eq!(
+        result.borrow().expr_type(hid(30)),
+        Some(Ty::int(ty::IntTy::I64))
+    );
+}
+
+#[test]
 fn records_binding_pattern_type() {
     let pattern = hir::Pat {
         hir_id: hid(8),
