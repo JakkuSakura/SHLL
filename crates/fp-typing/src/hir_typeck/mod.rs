@@ -2380,8 +2380,14 @@ impl HirTypeChecker {
             let float_literal = (lhs_float_literal && matches!(rhs.kind, TyKind::Float(_)))
                 || (rhs_float_literal && matches!(lhs.kind, TyKind::Float(_)));
             if matches!(op, hir::BinOp::Shl | hir::BinOp::Shr) {
-                if !matches!(lhs.kind, TyKind::Int(_) | TyKind::Uint(_))
+                // An unresolved operand already owns the primary diagnostic;
+                // rustc does not emit a second "shift operands" error while
+                // recovering from that failure.
+                if !ty_contains_error(&lhs)
+                    && !ty_contains_error(&rhs)
+                    && (!matches!(lhs.kind, TyKind::Int(_) | TyKind::Uint(_))
                     || !matches!(rhs.kind, TyKind::Int(_) | TyKind::Uint(_))
+                    )
                 {
                     self.record_error_with_span("shift operands must be integers", span);
                 }
