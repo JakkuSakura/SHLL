@@ -56,7 +56,7 @@ async fn compile_urcl_input_to_native_object() {
     fs::write(&input_file, minimal_urcl_program()).unwrap();
 
     let args = base_args(input_file, output_file.clone(), "native");
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let file = object::File::parse(bytes.as_slice()).unwrap();
@@ -76,7 +76,7 @@ async fn compile_urcl_input_to_goasm_text() {
     fs::write(&input_file, minimal_urcl_program()).unwrap();
 
     let args = base_args(input_file, output_file.clone(), "goasm");
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains("TEXT"));
@@ -90,7 +90,7 @@ async fn compile_urcl_input_to_urcl_text() {
     fs::write(&input_file, minimal_urcl_program()).unwrap();
 
     let args = base_args(input_file, output_file.clone(), "urcl");
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains("BITS 64"));

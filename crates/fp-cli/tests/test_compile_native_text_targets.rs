@@ -53,7 +53,7 @@ fn main() -> i64 {
     .unwrap();
 
     let args = base_args(input_file, output_file.clone(), "urcl", None);
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains("BITS 64"));
@@ -77,7 +77,7 @@ fn main() -> i64 {
     .unwrap();
 
     let args = base_args(input_file, output_file.clone(), "goasm", None);
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains("TEXT ·main(SB), NOSPLIT, $0-0"));
@@ -109,7 +109,7 @@ fn main() -> i64 {
         output: None,
         ..args
     };
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let output_file = input_file.with_extension("urcl");
     let text = fs::read_to_string(&output_file).unwrap();
@@ -136,7 +136,6 @@ fn main() -> i64 {
     args.exec = true;
 
     let err = compile_command(args, &CliConfig::default())
-        .await
         .unwrap_err();
     assert!(
         err.to_string()
@@ -164,7 +163,6 @@ fn main() -> i64 {
     args.exec = true;
 
     let err = compile_command(args, &CliConfig::default())
-        .await
         .unwrap_err();
     assert!(
         err.to_string()
@@ -209,7 +207,7 @@ async fn compile_native_asm_reemits_same_isa_text() {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains(".globl main"));
@@ -253,7 +251,7 @@ async fn compile_native_asm_transpiles_triplet_architecture() {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains(".globl main"));
@@ -299,7 +297,7 @@ async fn compile_native_asm_transpiles_memory_load() {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains("ldr "));
@@ -343,7 +341,7 @@ async fn compile_native_asm_transpiles_memory_store() {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains("str "));
@@ -388,7 +386,7 @@ async fn compile_native_asm_transpiles_indirect_register_call() {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains("bl v1:64"));
@@ -431,7 +429,7 @@ async fn compile_native_asm_transpiles_compare_branch() {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains("cmp.eq "));
@@ -475,7 +473,7 @@ async fn compile_native_asm_reemits_same_isa_physical_operands() {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains("mov v3:64, [v1:64 + v2:64*2 + 8]:8"));
@@ -519,7 +517,7 @@ async fn compile_native_asm_translates_x86_physical_registers_to_aarch64() {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains("ldr v"));
@@ -564,7 +562,7 @@ async fn compile_native_asm_translates_aarch64_physical_registers_to_x86() {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains("mov v"));
@@ -609,7 +607,7 @@ async fn compile_native_asm_translates_indexed_x86_address_to_aarch64() {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains("ldr v"));
@@ -653,7 +651,7 @@ async fn compile_native_asm_translates_indexed_aarch64_address_to_x86() {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let text = fs::read_to_string(&output_file).unwrap();
     assert!(text.contains("mov v1:64, [v2:64 + v3:64*3 + 16]:8"));

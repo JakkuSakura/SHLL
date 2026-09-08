@@ -562,9 +562,9 @@ impl CompilerDriver {
                             CompilerDriverError::UnresolvablePackage(format!("{package_id}: {error}"))
                         })?;
                         let artifact = AstCacheArtifact::from_package(&source);
-                        self.state.borrow().cache().save(&cache_key, &artifact).map_err(|error| {
-                            CompilerDriverError::InternalCompilerError(format!("failed to save AST cache for {package_id}: {error}"))
-                        })?;
+                        if let Err(error) = self.state.borrow().cache().save(&cache_key, &artifact) {
+                            tracing::warn!(package = %package_id, %error, "failed to save AST cache; continuing without cache entry");
+                        }
                         source
                     }
                     Err(error) => {
@@ -808,12 +808,12 @@ impl CompilerDriver {
             ],
         );
 
-        let hir_cache_hit = match self
+        let hir_cache_result = self
             .state
             .borrow()
             .cache()
-            .load::<hir::HirPackage>(&hir_cache_key)
-        {
+            .load::<hir::HirPackage>(&hir_cache_key);
+        let hir_cache_hit = match hir_cache_result {
             Ok(Some(cached_package)) => {
                 tracing::info!(
                     package = %hir_package_id,
@@ -867,15 +867,14 @@ impl CompilerDriver {
             }
             let typed_package = self.state.borrow().hir_package_rc(hir_package_id.clone())?;
             let typed_package = typed_package.borrow().clone();
-            self.state
+            if let Err(error) = self
+                .state
                 .borrow()
                 .cache()
                 .save(&hir_cache_key, &typed_package)
-                .map_err(|error| {
-                    CompilerDriverError::InternalCompilerError(format!(
-                        "failed to save HIR cache for {hir_package_id}: {error}"
-                    ))
-                })?;
+            {
+                tracing::warn!(package = %hir_package_id, %error, "failed to save HIR cache; continuing without cache entry");
+            }
         }
 
         // Transpile: lift typed HIR back to AST — this is what the Kotlin
@@ -1263,7 +1262,8 @@ impl CompilerDriver {
                 ("hir", &hir_identity),
             ],
         );
-        match state.borrow().cache().load::<mir::MirCodeUnit>(&cache_key) {
+        let mir_cache_result = state.borrow().cache().load::<mir::MirCodeUnit>(&cache_key);
+        match mir_cache_result {
             Ok(Some(unit)) => {
                 tracing::info!(
                     package = %package_id,
@@ -1304,15 +1304,9 @@ impl CompilerDriver {
         // those must not be silently dropped when `lowering` goes out of
         // scope at the end of this function.
         lowering.walk_program_types_for_layouts(&unit);
-        state
-            .borrow()
-            .cache()
-            .save(&cache_key, &unit)
-            .map_err(|error| {
-                CompilerDriverError::InternalCompilerError(format!(
-                    "failed to save MIR cache for {package_id}/{def_id}: {error}"
-                ))
-            })?;
+        if let Err(error) = state.borrow().cache().save(&cache_key, &unit) {
+            tracing::warn!(package = %package_id, %def_id, %error, "failed to save MIR cache; continuing without cache entry");
+        }
         state.borrow_mut().insert_mir_unit(package_id, def_id, unit);
         Ok(())
     }
@@ -1361,11 +1355,11 @@ impl CompilerDriver {
                 ("layout", &data_layout_identity),
             ],
         );
-        match state
+        let lir_cache_result = state
             .borrow()
             .cache()
-            .load::<Vec<fp_core::lir::LirBlob>>(&cache_key)
-        {
+            .load::<Vec<fp_core::lir::LirBlob>>(&cache_key);
+        match lir_cache_result {
             Ok(Some(blobs)) => {
                 tracing::info!(package = %package_id, def_id = %def_id, "compiler cache hit: LIR");
                 for blob in blobs {
@@ -1389,15 +1383,9 @@ impl CompilerDriver {
                 "MIR-to-LIR lowering failed for {def_id}: {error}"
             ))
         })?;
-        state
-            .borrow()
-            .cache()
-            .save(&cache_key, &blobs)
-            .map_err(|error| {
-                CompilerDriverError::InternalCompilerError(format!(
-                    "failed to save LIR cache for {package_id}/{def_id}: {error}"
-                ))
-            })?;
+        if let Err(error) = state.borrow().cache().save(&cache_key, &blobs) {
+            tracing::warn!(package = %package_id, %def_id, %error, "failed to save LIR cache; continuing without cache entry");
+        }
         for blob in blobs {
             state
                 .borrow_mut()

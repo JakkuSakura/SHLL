@@ -491,6 +491,45 @@ impl AstToHirLowerer {
                 };
                 let parsed = name.path.clone();
                 let resolution_namespace = namespace;
+                // Primitive receivers take precedence over same-named
+                // documentation modules in type-relative paths (for
+                // example, `f128::INFINITY`). Keep single-segment paths on
+                // normal lookup so a user-defined `u8` can still shadow the
+                // builtin name.
+                if matches!(scope, PathResolutionScope::Type)
+                    && parsed.prefix == fp_core::ast::path::PathPrefix::Plain
+                    && parsed.segments.len() > 1
+                    && parsed
+                        .segments
+                        .first()
+                        .is_some_and(|segment| is_primitive_type_name(segment.as_str()))
+                {
+                    let primitive = parsed.segments[0].as_str().to_owned();
+                    let args = self.name_segment_args(name)?;
+                    let mut segments: Vec<_> = parsed
+                        .segments
+                        .iter()
+                        .zip(args.into_iter())
+                        .map(|(segment, args)| {
+                            self.make_path_segment(segment.as_str(), args, param_mode)
+                        })
+                        .collect();
+                    let base = segments.remove(0);
+                    let mut qpath = hir::QPath::resolved(hir::Path {
+                        span: expr.span(),
+                        res: Res::Builtin(hir::BuiltinSelfType::Primitive(primitive)),
+                        segments: vec![base],
+                    });
+                    for segment in segments {
+                        let receiver = hir::TypeExpr::new(
+                            self.next_id(),
+                            hir::TypeExprKind::Path(qpath),
+                            expr.span(),
+                        );
+                        qpath = hir::QPath::type_relative(receiver, segment);
+                    }
+                    return Ok(qpath);
+                }
                 let resolution = self.local_resolver.resolve_parsed_path(
                     &self.package_id,
                     &self.module_path,
@@ -499,6 +538,31 @@ impl AstToHirLowerer {
                 );
                 let resolved = match resolution {
                     fp_core::hir::resolve::ResolutionResult::Found(path) => {
+                        if matches!(scope, PathResolutionScope::Type)
+                            && parsed.prefix == fp_core::ast::path::PathPrefix::Plain
+                            && parsed.segments.len() == 1
+                            && parsed
+                                .segments
+                                .first()
+                                .is_some_and(|segment| is_primitive_type_name(segment.as_str()))
+                            && matches!(path.res, Res::Module(_))
+                        {
+                            let primitive = parsed.segments[0].as_str().to_owned();
+                            let args = self.name_segment_args(name)?;
+                            let segments = parsed
+                                .segments
+                                .iter()
+                                .zip(args.into_iter())
+                                .map(|(segment, args)| {
+                                    self.make_path_segment(segment.as_str(), args, param_mode)
+                                })
+                                .collect();
+                            return Ok(hir::QPath::resolved(hir::Path {
+                                span: expr.span(),
+                                res: Res::Builtin(hir::BuiltinSelfType::Primitive(primitive)),
+                                segments,
+                            }));
+                        }
                         let mut path = path;
                         let args = self.name_segment_args(name)?;
                         path.span = expr.span();

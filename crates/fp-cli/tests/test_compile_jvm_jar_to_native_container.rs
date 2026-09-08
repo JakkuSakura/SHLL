@@ -61,7 +61,7 @@ async fn compile_jvm_jar_to_native_object() {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
     let bytes = fs::read(&output_file).unwrap();
     assert!(bytes.starts_with(b"\x7fELF"));
 }

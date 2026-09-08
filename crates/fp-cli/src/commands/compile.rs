@@ -351,6 +351,19 @@ fn run_named_target(
         ));
     }
 
+    // A JVM classfile targeted as JVM bytecode is already in the requested
+    // representation; preserve it byte-for-byte instead of routing it
+    // through the source compiler, which requires a FerroPhase MIR package.
+    if !input.is_dir()
+        && lang == crate::languages::JVM_BYTECODE
+        && matches!(target_name, "jvm-bytecode" | "jvm" | "class")
+    {
+        std::fs::copy(input, output).map_err(|error| {
+            CliError::Compilation(format!("failed to copy JVM classfile: {error}"))
+        })?;
+        return Ok(());
+    }
+
     // A foreign-artifact-input compile (a native object file, or asm/goasm/
     // URCL text, given directly as input) can legitimately just retarget
     // it without linking (`--link`/`--exec` both absent) — every ordinary

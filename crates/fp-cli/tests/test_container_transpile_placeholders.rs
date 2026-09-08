@@ -67,12 +67,13 @@ async fn compile_transpiles_jvm_class_to_native_object() {
     let mut args = base_args(input_file, output_file.clone());
     args.source_language = Some("jvm-bytecode".to_string());
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
     let bytes = fs::read(&output_file).unwrap();
     assert!(bytes.starts_with(b"\x7fELF"));
 }
 
 #[tokio::test]
+#[cfg(feature = "lang-cil")]
 async fn compile_rejects_cil_transpile_placeholder() {
     let temp_dir = TempDir::new().unwrap();
     let input_file = temp_dir.path().join("Hello.dll");
@@ -83,10 +84,9 @@ async fn compile_rejects_cil_transpile_placeholder() {
     args.source_language = Some("cil".to_string());
 
     let err = compile_command(args, &CliConfig::default())
-        .await
         .unwrap_err();
     assert!(
         err.to_string()
-            .contains("binary .dll/.exe -> native transpilation is not implemented yet")
+            .contains("CIL binary input cannot be transpiled to native")
     );
 }

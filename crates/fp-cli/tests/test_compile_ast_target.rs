@@ -34,6 +34,7 @@ fn base_compile_args(input: std::path::PathBuf, output: std::path::PathBuf) -> C
 }
 
 #[tokio::test]
+#[cfg(feature = "lang-typescript")]
 async fn test_compile_target_typescript_with_structs() {
     let temp_dir = TempDir::new().unwrap();
     let input_file = temp_dir.path().join("test.fp");
@@ -64,7 +65,7 @@ fn main() {
     args.target = "typescript".to_string();
 
     let config = CliConfig::default();
-    let result = compile_command(args, &config).await;
+    let result = compile_command(args, &config);
     assert!(result.is_ok(), "TypeScript target should succeed");
 
     assert!(output_file.exists(), "Output file should be created");
@@ -99,7 +100,7 @@ fn main() {
     args.target = "javascript".to_string();
 
     let config = CliConfig::default();
-    let result = compile_command(args, &config).await;
+    let result = compile_command(args, &config);
     assert!(result.is_ok(), "JavaScript target should succeed");
 
     assert!(output_file.exists(), "Output file should be created");
@@ -110,6 +111,7 @@ fn main() {
 }
 
 #[tokio::test]
+#[cfg(feature = "lang-typescript")]
 async fn test_compile_target_typescript_with_type_definitions() {
     let temp_dir = TempDir::new().unwrap();
     let input_file = temp_dir.path().join("test.fp");
@@ -135,7 +137,7 @@ fn main() {
     args.type_defs = true;
 
     let config = CliConfig::default();
-    let result = compile_command(args, &config).await;
+    let result = compile_command(args, &config);
     assert!(
         result.is_ok(),
         "TypeScript target should succeed: {result:?}"
@@ -163,6 +165,6 @@ async fn test_compile_target_invalid_target() {
     args.target = "invalid_target".to_string();
 
     let config = CliConfig::default();
-    let result = compile_command(args, &config).await;
+    let result = compile_command(args, &config);
     assert!(result.is_err(), "Invalid target should fail");
 }

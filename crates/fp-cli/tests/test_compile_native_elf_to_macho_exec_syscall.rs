@@ -99,7 +99,7 @@ async fn compile_linux_elf_syscalls_to_darwin_macho_exec_and_run() {
 
     fs::write(&input_file, build_x86_64_elf_object_with_linux_syscalls()).unwrap();
     let args = base_args(input_file, output_file.clone());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let file = object::File::parse(bytes.as_slice()).unwrap();

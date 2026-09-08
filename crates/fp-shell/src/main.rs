@@ -39,8 +39,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         exec: cli.exec, link: false, save_intermediates: false, source_language: Some("fp".into()),
         type_defs: false, single_world: false,
     };
-    let runtime = tokio::runtime::Runtime::new()?;
-    runtime.block_on(fp_cli::commands::compile_command(args, &CliConfig::default()))?;
+    fp_cli::commands::compile_command(args, &CliConfig::default())?;
     if cli.check { println!("ok"); }
     Ok(())
 }
