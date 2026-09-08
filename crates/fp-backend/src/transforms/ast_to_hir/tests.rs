@@ -5959,6 +5959,18 @@ mod function_body_resolution {
             panic!("expected qualified module path body");
         };
         assert!(matches!(path.res(), hir::Res::Def(_)), "path: {path:?}");
+        let hir::QPath::Resolved(None, path) = path else {
+            panic!("module-qualified type must remain an ordinary path: {path:?}");
+        };
+        assert_eq!(
+            path.segments()
+                .iter()
+                .map(|segment| segment.ident.as_str())
+                .collect::<Vec<_>>(),
+            ["types", "Token"]
+        );
+        assert!(matches!(path.segments()[0].res, hir::Res::Module(_)));
+        assert!(matches!(path.segments()[1].res, hir::Res::Def(_)));
     }
 
     #[test]
