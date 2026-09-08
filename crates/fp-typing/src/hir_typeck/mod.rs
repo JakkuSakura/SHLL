@@ -1641,10 +1641,10 @@ impl HirTypeChecker {
                     .with_expected_expr_type(Ty::uint(ty::UintTy::Usize))
                     .check_expr(index)
                     .await?;
-                let receiver_ty = match &receiver_ty.kind {
-                    TyKind::Ref(_, inner, _) => inner.as_ref(),
-                    _ => &receiver_ty,
-                };
+                let mut receiver_ty = &receiver_ty;
+                while let TyKind::Ref(_, inner, _) = &receiver_ty.kind {
+                    receiver_ty = inner;
+                }
                 let ty = match &receiver_ty.kind {
                     TyKind::Array(inner, _) | TyKind::Slice(inner) => {
                         // Integer locals default to `i64` here, while rustc
@@ -2249,10 +2249,10 @@ impl HirTypeChecker {
                 if let Some(end) = &slice.end {
                     self.check_expr(end).await?;
                 }
-                let base_ty = match &base_ty.kind {
-                    TyKind::Ref(_, inner, _) => inner.as_ref(),
-                    _ => &base_ty,
-                };
+                let mut base_ty = &base_ty;
+                while let TyKind::Ref(_, inner, _) = &base_ty.kind {
+                    base_ty = inner;
+                }
                 Ok::<_, fp_core::error::Error>(match &base_ty.kind {
                     TyKind::Array(inner, _) => Ty {
                         kind: TyKind::Slice(inner.clone()),
