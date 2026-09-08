@@ -96,6 +96,27 @@ fn core_f128_inherent_associated_constants_are_lowered() {
         u128_has_byte_conversions,
         "macro-generated u128 byte conversion methods were not indexed"
     );
+
+    let u8_carrying_add = hir_program
+        .borrow()
+        .impls_for_shape("u8")
+        .filter_map(|item| match item.kind {
+            fp_core::hir::ItemKind::Impl(implementation) => Some(implementation),
+            _ => None,
+        })
+        .find(|implementation| {
+            implementation
+                .items
+                .iter()
+                .any(|member| member.name == "carrying_add")
+        })
+        .expect("core u8 carrying_add impl was not indexed");
+    assert!(matches!(
+        u8_carrying_add.self_ty.kind,
+        fp_core::hir::TypeExprKind::Primitive(fp_core::ast::TypePrimitive::Int(
+            fp_core::ast::TypeInt::U8
+        ))
+    ));
 }
 
 #[test]
@@ -168,6 +189,11 @@ fn type_checks_rust_std_packages_without_stopping_at_first_error() {
 
     let mut total_diagnostics = 0usize;
     for package_id in package_ids {
+        if let Some(selected_package) = std::env::var("FP_STD_TYPECHECK_PACKAGE").ok()
+            && package_id.as_str() != selected_package
+        {
+            continue;
+        }
         let package = hir_program
             .borrow()
             .package_rc(&package_id)
@@ -182,13 +208,19 @@ fn type_checks_rust_std_packages_without_stopping_at_first_error() {
             Some(comptime_resolver),
             executor.handle(),
         );
-        let item_ids = checker
+        let mut item_ids = checker
             .borrow()
             .package()
             .items
             .iter()
             .map(|item| item.def_id.clone())
             .collect::<Vec<_>>();
+        if let Some(limit) = std::env::var("FP_STD_TYPECHECK_MAX_ITEMS")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+        {
+            item_ids.truncate(limit);
+        }
         let handles = item_ids
             .into_iter()
             .map(|def_id| HirTypeChecker::spawn_item_task(&checker, def_id))
