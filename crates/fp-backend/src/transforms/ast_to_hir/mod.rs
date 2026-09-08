@@ -1167,6 +1167,11 @@ impl AstToHirLowerer {
             .with_cfg_filter(self.cfg_filter.clone()),
         ));
         resolver.borrow_mut().resolve_package(&self.package_id)?;
+        for issue in resolver.borrow_mut().take_issues() {
+            self.add_error(
+                fp_core::diagnostics::Diagnostic::error(issue.message).with_span(issue.span),
+            );
+        }
         self.package_resolver = Some(Rc::clone(&resolver));
         let package_items = fp_core::ast::package::AstPackage::flatten_module_items(
             &fp_core::ast::path::InPackagePath::new(Vec::new()),

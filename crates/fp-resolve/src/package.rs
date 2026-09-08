@@ -17,6 +17,13 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::collections::VecDeque;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+#[derive(Debug, Clone)]
+pub struct ResolutionIssue {
+    pub message: String,
+    pub span: Span,
+}
+
 pub struct InPackageResolver {
     hir_package: Rc<RefCell<hir::HirPackage>>,
     resolver: Resolver,
@@ -29,6 +36,9 @@ pub struct InPackageResolver {
     hir_program: Rc<RefCell<HirProgram>>,
     cfg_filter: CfgFilter,
     impl_def_occurrences: HashMap<(String, Span), usize>,
+    enum_variants: HashMap<hir::DefId, Vec<(Symbol, hir::Res)>>,
+    issues: Vec<ResolutionIssue>,
+    glob_imports: HashMap<(InPackagePath, Symbol, Namespace), hir::Res>,
 }
 
 impl InPackageResolver {
@@ -48,6 +58,9 @@ impl InPackageResolver {
             hir_program,
             cfg_filter: CfgFilter::host(),
             impl_def_occurrences: HashMap::new(),
+            enum_variants: HashMap::new(),
+            issues: Vec::new(),
+            glob_imports: HashMap::new(),
         }
     }
 
@@ -58,6 +71,9 @@ impl InPackageResolver {
 
     pub fn resolve_package(&mut self, package_id: &PackageId) -> fp_core::error::Result<()> {
         self.impl_def_occurrences.clear();
+        self.enum_variants.clear();
+        self.issues.clear();
+        self.glob_imports.clear();
         let module = self
             .ast_program
             .get_ast_package(package_id)
@@ -73,6 +89,25 @@ impl InPackageResolver {
 
     pub fn package(&self) -> Rc<RefCell<hir::HirPackage>> {
         Rc::clone(&self.hir_package)
+    }
+
+    pub fn take_issues(&mut self) -> Vec<ResolutionIssue> {
+        std::mem::take(&mut self.issues)
+    }
+
+    fn record_issue(&mut self, message: impl Into<String>, span: Span) {
+        let message = message.into();
+        if self
+            .issues
+            .iter()
+            .any(|issue| issue.message == message && issue.span == span)
+        {
+            return;
+        }
+        self.issues.push(ResolutionIssue {
+            message,
+            span,
+        });
     }
 
     pub fn resolve_declared(
@@ -319,7 +354,21 @@ impl InPackageResolver {
                 );
             }
             ItemKind::DefEnum(def) => {
-                self.declare_definition(module, &def.name, Namespace::Type, span);
+                let enum_id = self.declare_definition(module, &def.name, Namespace::Type, span);
+                let variants = def
+                    .value
+                    .variants
+                    .iter()
+                    .map(|variant| {
+                        let variant_id = self.hir_package.borrow_mut().member_def_id(
+                            &enum_id,
+                            variant.name.name.clone(),
+                            Namespace::Value,
+                        );
+                        (variant.name.name.clone().into(), hir::Res::Def(variant_id))
+                    })
+                    .collect();
+                self.enum_variants.insert(enum_id, variants);
             }
             ItemKind::DefType(def) => {
                 self.declare_definition(module, &def.name, Namespace::Type, span);
@@ -441,19 +490,26 @@ impl InPackageResolver {
                         ResolutionResult::Found(path) => {
                             match path.res {
                                 hir::Res::Def(def_id) => {
-                                    self.hir_program.borrow().item(def_id).and_then(|item| {
-                                        let hir::ItemKind::Enum(definition) = item.kind else {
-                                            return None;
-                                        };
-                                        (directive.namespace == Namespace::Value).then(|| {
-                                            definition
-                                                .variants
-                                                .into_iter()
-                                                .map(|variant| {
-                                                    (variant.name, hir::Res::Def(variant.def_id))
-                                                })
-                                                .collect::<Vec<_>>()
-                                        })
+                                    (directive.namespace == Namespace::Value)
+                                        .then(|| self.enum_variants.get(&def_id).cloned())
+                                        .flatten()
+                                        .or_else(|| {
+                                            self.hir_program.borrow().item(def_id).and_then(
+                                                |item| {
+                                                    let hir::ItemKind::Enum(definition) = item.kind else {
+                                                        return None;
+                                                    };
+                                                    (directive.namespace == Namespace::Value).then(|| {
+                                                        definition
+                                                            .variants
+                                                            .into_iter()
+                                                            .map(|variant| {
+                                                                (variant.name, hir::Res::Def(variant.def_id))
+                                                            })
+                                                            .collect::<Vec<_>>()
+                                                    })
+                                                },
+                                            )
                                     })
                                 }
                                 _ => None,
@@ -472,12 +528,31 @@ impl InPackageResolver {
                         for (name, target) in members {
                             let outcome = self.declare_import(
                                 &directive.module,
-                                name,
-                                target,
+                                name.clone(),
+                                target.clone(),
                                 directive.namespace,
                                 directive.span,
                             );
-                            inserted |= outcome == DeclarationOutcome::Inserted;
+                            let key = (
+                                directive.module.clone(),
+                                name.clone(),
+                                directive.namespace,
+                            );
+                            match outcome {
+                                DeclarationOutcome::Inserted => {
+                                    inserted = true;
+                                    self.glob_imports.insert(key, target);
+                                }
+                                DeclarationOutcome::Conflict
+                                    if self
+                                        .glob_imports
+                                        .get(&key)
+                                        .is_some_and(|existing| existing != &target) =>
+                                {
+                                    self.record_issue("ambiguous import", directive.span);
+                                }
+                                DeclarationOutcome::Conflict | DeclarationOutcome::IdenticalImport => {}
+                            }
                         }
                         made_progress |= inserted;
                         // Keep a glob alive for another round. Its target
@@ -517,6 +592,14 @@ impl InPackageResolver {
                 // unresolved explicit imports for diagnostics, but consume
                 // quiescent globs so callers do not need to drain a
                 // permanently retryable wildcard.
+                for directive in deferred.iter().filter(|directive| {
+                    directive.kind == ImportKind::Single && directive.namespace == Namespace::Type
+                }) {
+                    self.record_issue(
+                        format!("unresolved import `{}`", directive.target),
+                        directive.span,
+                    );
+                }
                 worklist.queue = deferred
                     .into_iter()
                     .filter(|directive| directive.kind != ImportKind::Glob)

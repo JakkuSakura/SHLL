@@ -103,7 +103,7 @@ impl AstToHirLowerer {
                 let expr = ast::Expr::new(ast::ExprKind::Name(tuple_struct.name.clone()));
                 let path = self.ast_expr_to_hir_path(
                     &expr,
-                    PathResolutionScope::Type,
+                    PathResolutionScope::Value,
                     ParamMode::Optional,
                 )?;
                 let parts = tuple_struct

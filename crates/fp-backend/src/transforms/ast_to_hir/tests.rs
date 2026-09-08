@@ -2606,7 +2606,7 @@ fn transform_imported_dependency_enum_variant_uses_defining_identity() -> Result
 fn transform_bare_imported_enum_variant_pattern_uses_enum_identity() -> Result<()> {
     let parser = FerroPhaseParser::new();
     let items = parser.parse_items_ast(
-        "enum RefNode { WorkingTree, Branch(String) } use RefNode::*; fn classify(node: RefNode) -> bool { match node { WorkingTree => true, Branch(_) => false } }",
+        "enum RefNode { WorkingTree, Branch(i64) } use RefNode::*; fn classify(node: RefNode) -> bool { match node { WorkingTree => true, Branch(_) => false } }",
     )?;
     let package = package_from_items(items)?;
     let mut lowerer = AstToHirLowerer::new(
@@ -2617,9 +2617,10 @@ fn transform_bare_imported_enum_variant_pattern_uses_enum_identity() -> Result<(
         hir::PackageId::new("consumer"),
     );
     let _package = lowerer.transform_package(&package)?;
+    let diagnostics = lowerer.take_diagnostics().get_diagnostics();
     assert!(
-        lowerer.take_diagnostics().get_diagnostics().is_empty(),
-        "bare enum variants imported into pattern scope should resolve"
+        diagnostics.is_empty(),
+        "bare enum variants imported into pattern scope should resolve: {diagnostics:?}"
     );
     Ok(())
 }
