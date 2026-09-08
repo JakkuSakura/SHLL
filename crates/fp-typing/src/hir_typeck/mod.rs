@@ -2354,6 +2354,8 @@ impl HirTypeChecker {
         span: fp_core::span::Span,
     ) -> crate::BoxFuture<'a, Result<Ty>> {
         Box::pin(async move {
+            let lhs_expr = lhs;
+            let rhs_expr = rhs;
             let lhs_literal = matches!(lhs.kind, hir::ExprKind::Literal(hir::Lit::Integer(_)));
             let rhs_literal = matches!(rhs.kind, hir::ExprKind::Literal(hir::Lit::Integer(_)));
             let lhs_float_literal = matches!(lhs.kind, hir::ExprKind::Literal(hir::Lit::Float(_)));
@@ -2398,6 +2400,8 @@ impl HirTypeChecker {
                     self.record_error_with_span("shift operands must be integers", span);
                 }
             } else if !integer_literal && !float_literal {
+                self.refine_integer_local(lhs_expr, &rhs);
+                self.refine_integer_local(rhs_expr, &lhs);
                 match op {
                     hir::BinOp::And | hir::BinOp::Or => {
                         self.require_same_at(&lhs, &Ty::bool(), span)?;
