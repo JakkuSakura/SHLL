@@ -1632,7 +1632,17 @@ impl HirTypeChecker {
                 };
                 let ty = match &receiver_ty.kind {
                     TyKind::Array(inner, _) | TyKind::Slice(inner) => {
-                        self.require_same_at(&index_ty, &Ty::uint(ty::UintTy::Usize), expr.span)?;
+                        // Integer locals default to `i64` here, while rustc
+                        // lets an indexing constraint infer them as `usize`.
+                        // Keep the element expression usable for that case;
+                        // non-integer indices remain a type error.
+                        if !matches!(index_ty.kind, TyKind::Int(_) | TyKind::Uint(_)) {
+                            self.require_same_at(
+                                &index_ty,
+                                &Ty::uint(ty::UintTy::Usize),
+                                expr.span,
+                            )?;
+                        }
                         (**inner).clone()
                     }
                     // `HashMap<K, V>` is a real struct (see
