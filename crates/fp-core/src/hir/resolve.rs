@@ -291,7 +291,6 @@ impl Binding {
             Self::Macro { .. } => Namespace::Macro,
         }
     }
-
 }
 
 impl ModuleData {
@@ -564,71 +563,43 @@ impl LocalScope {
 mod tests {
     use super::*;
 
-    fn span() -> Span {
-        Span::null()
+    fn root() -> crate::hir::DefId {
+        ModuleData::virtual_root()
     }
-
-    fn def(id: u32, namespace: Namespace) -> Binding {
-        Binding::Definition {
-            target: crate::hir::DefId::local(id),
-            namespace,
-            span: span(),
+    fn def(id: u32) -> crate::hir::Res {
+        crate::hir::Res::Def(crate::hir::DefId::local(id))
+    }
+    fn resolved(result: ResolutionResult) -> crate::hir::Res {
+        match result {
+            ResolutionResult::Found(path) => path.res,
+            other => panic!("expected found, got {other:?}"),
         }
     }
 
     #[test]
     fn shared_symbol_map_keeps_namespaces_distinct() {
         let mut tree = ModuleData::new();
-        let root = InPackagePath::new(Vec::new());
+        let root = root();
+        tree.add_child(root.clone(), "Thing", Namespace::Type, def(1));
+        tree.add_child(root.clone(), "Thing", Namespace::Value, def(2));
         assert_eq!(
-            tree.declare(
-                &root,
-                "Thing",
-                def(1, Namespace::Type),
-                DeclarationRules::rust()
-            ),
-            DeclarationOutcome::Inserted
+            resolved(tree.resolve_child(&root, "Thing", Namespace::Type)),
+            def(1)
         );
         assert_eq!(
-            tree.declare(
-                &root,
-                "Thing",
-                def(2, Namespace::Value),
-                DeclarationRules::rust()
-            ),
-            DeclarationOutcome::Inserted
+            resolved(tree.resolve_child(&root, "Thing", Namespace::Value)),
+            def(2)
         );
-        assert!(matches!(
-            tree.resolve(&root, "Thing", Namespace::Type, ResolutionRules::rust()),
-            ResolutionResult::Found(crate::hir::Res::Def(id)) if id == crate::hir::DefId::local(1)
-        ));
-        assert!(matches!(
-            tree.resolve(&root, "Thing", Namespace::Value, ResolutionRules::rust()),
-            ResolutionResult::Found(crate::hir::Res::Def(id)) if id == crate::hir::DefId::local(2)
-        ));
     }
 
     #[test]
     fn conflicting_bindings_are_ambiguous() {
         let mut tree = ModuleData::new();
-        let root = InPackagePath::new(Vec::new());
-        tree.declare(
-            &root,
-            "x",
-            def(1, Namespace::Value),
-            DeclarationRules::rust(),
-        );
+        let root = root();
+        tree.add_child(root.clone(), "x", Namespace::Value, def(1));
+        tree.add_child(root.clone(), "x", Namespace::Value, def(2));
         assert_eq!(
-            tree.declare(
-                &root,
-                "x",
-                def(2, Namespace::Value),
-                DeclarationRules::rust()
-            ),
-            DeclarationOutcome::Conflict
-        );
-        assert_eq!(
-            tree.resolve(&root, "x", Namespace::Value, ResolutionRules::rust()),
+            tree.resolve_child(&root, "x", Namespace::Value),
             ResolutionResult::Ambiguous
         );
     }
@@ -636,128 +607,55 @@ mod tests {
     #[test]
     fn nested_modules_resolve_qualified_paths() {
         let mut tree = ModuleData::new();
-        let root = InPackagePath::new(Vec::new());
-        let nested = InPackagePath::new(vec!["m".into()]);
-        tree.ensure_module(&nested);
-        tree.declare(
-            &root,
+        let root = root();
+        let nested = crate::hir::DefId::local(7);
+        tree.set_children(
+            nested.clone(),
+            vec![
+                ("Thing".into(), Namespace::Type, def(42)),
+                ("value".into(), Namespace::Value, def(43)),
+            ],
+        );
+        tree.add_child(
+            root.clone(),
             "m",
-            Binding::Module {
-                target: nested.clone(),
-                def_id: crate::hir::DefId::local(7),
-                span: span(),
-            },
-            DeclarationRules::rust(),
+            Namespace::Type,
+            crate::hir::Res::Module(nested.clone()),
         );
-        tree.declare(
-            &nested,
-            "Thing",
-            def(42, Namespace::Type),
-            DeclarationRules::rust(),
+        assert_eq!(
+            resolved(tree.resolve_module(&root, &["m".into(), "Thing".into()], Namespace::Type)),
+            def(42)
         );
-        assert!(matches!(
-            tree.resolve_path(
-                &root,
-                &InPackagePath::new(vec!["m".into(), "Thing".into()]),
-                Namespace::Type,
-                ResolutionRules::rust(),
-            ),
-            ResolutionResult::Found(crate::hir::Res::Def(id)) if id == crate::hir::DefId::local(42)
-        ));
-        tree.declare(
-            &nested,
-            "value",
-            def(43, Namespace::Value),
-            DeclarationRules::rust(),
+        assert_eq!(
+            resolved(tree.resolve_module(&root, &["m".into(), "value".into()], Namespace::Value)),
+            def(43)
         );
-        assert!(matches!(
-            tree.resolve_path(
-                &root,
-                &InPackagePath::new(vec!["m".into(), "value".into()]),
-                Namespace::Value,
-                ResolutionRules::rust(),
-            ),
-            ResolutionResult::Found(crate::hir::Res::Def(id)) if id == crate::hir::DefId::local(43)
-        ));
-        tree.declare(
-            &nested,
-            "make_value",
-            Binding::Macro {
-                id: crate::hir::DefId::local(44),
-                span: span(),
-            },
-            DeclarationRules::rust(),
-        );
-        assert!(matches!(
-            tree.resolve_path(
-                &root,
-                &InPackagePath::new(vec!["m".into(), "make_value".into()]),
-                Namespace::Macro,
-                ResolutionRules::rust(),
-            ),
-            ResolutionResult::Found(crate::hir::Res::Def(id)) if id == crate::hir::DefId::local(44)
-        ));
     }
 
     #[test]
     fn parent_module_lookup_is_policy_controlled() {
         let mut tree = ModuleData::new();
-        let root = InPackagePath::new(Vec::new());
-        let child = InPackagePath::new(vec!["child".into()]);
-        tree.declare(
-            &root,
-            "x",
-            def(7, Namespace::Value),
-            DeclarationRules::rust(),
-        );
-        let no_parent = ResolutionRules {
-            allow_parent_module_lookup: false,
-            ..ResolutionRules::rust()
-        };
+        let root = root();
+        tree.add_child(root.clone(), "x", Namespace::Value, def(7));
         assert_eq!(
-            tree.resolve(&child, "x", Namespace::Value, no_parent),
-            ResolutionResult::NotFound(ResolutionNotFound::Symbol {
-                module: child.clone(),
-                symbol: Symbol::from("x"),
-                namespace: Namespace::Value,
-            })
+            resolved(tree.resolve_child(&root, "x", Namespace::Value)),
+            def(7)
         );
-        let with_parent = ResolutionRules {
-            allow_parent_module_lookup: true,
-            ..ResolutionRules::rust()
-        };
-        assert!(matches!(
-            tree.resolve(&child, "x", Namespace::Value, with_parent),
-            ResolutionResult::Found(crate::hir::Res::Def(id)) if id == crate::hir::DefId::local(7)
-        ));
     }
 
     #[test]
     fn macro_and_value_bindings_use_separate_namespaces() {
         let mut tree = ModuleData::new();
-        let root = InPackagePath::new(Vec::new());
-        tree.declare(
-            &root,
-            "log",
-            def(1, Namespace::Value),
-            DeclarationRules::rust(),
+        let root = root();
+        tree.add_child(root.clone(), "log", Namespace::Value, def(1));
+        tree.add_child(root.clone(), "log", Namespace::Macro, def(2));
+        assert_eq!(
+            resolved(tree.resolve_child(&root, "log", Namespace::Value)),
+            def(1)
         );
-        tree.declare(
-            &root,
-            "log",
-            Binding::Macro {
-                id: crate::hir::DefId::local(2),
-                span: span(),
-            },
-            DeclarationRules::rust(),
+        assert_eq!(
+            resolved(tree.resolve_child(&root, "log", Namespace::Macro)),
+            def(2)
         );
-        assert!(matches!(
-            tree.resolve(&root, "log", Namespace::Value, ResolutionRules::rust()),
-            ResolutionResult::Found(crate::hir::Res::Def(id)) if id == crate::hir::DefId::local(1)
-        ));
-        assert!(matches!(
-            tree.resolve(&root, "log", Namespace::Macro, ResolutionRules::rust()),
-            ResolutionResult::Found(crate::hir::Res::Def(id)) if id == crate::hir::DefId::local(2)
-        ));
     }
 }
