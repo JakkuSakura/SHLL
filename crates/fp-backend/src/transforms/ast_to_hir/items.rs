@@ -40,7 +40,7 @@ impl AstToHirLowerer {
             if let Some(receiver) = &func.sig.receiver {
                 let receiver_ty = self_ty.clone().unwrap_or_else(|| self.create_unit_type());
                 let self_param = self.make_self_param(receiver, receiver_ty)?;
-                self.register_pattern_bindings(&self_param.pat);
+                self.register_parameter_bindings(&self_param.pat);
                 params.insert(0, self_param);
             }
             let mut output = if let Some(ret_ty) = &func.sig.ret_ty {
@@ -116,7 +116,7 @@ impl AstToHirLowerer {
             if let Some(receiver) = &func.sig.receiver {
                 let receiver_ty = self_ty.clone().unwrap_or_else(|| self.create_unit_type());
                 let self_param = self.make_self_param(receiver, receiver_ty)?;
-                self.register_pattern_bindings(&self_param.pat);
+                self.register_parameter_bindings(&self_param.pat);
                 params.insert(0, self_param);
             }
             let output = if let Some(ret_ty) = &func.sig.ret_ty {
@@ -174,7 +174,7 @@ impl AstToHirLowerer {
                         .transpose()?,
                 };
 
-                self.register_pattern_bindings(&hir_param.pat);
+                self.register_parameter_bindings(&hir_param.pat);
 
                 Ok(hir_param)
             })
@@ -280,8 +280,7 @@ impl AstToHirLowerer {
                     let Some(last_segment) = parameter_path.segments.last() else {
                         return Vec::new();
                     };
-                    let Some(ast::GenericArgs::AngleBracketed(args)) =
-                        last_segment.args.as_deref()
+                    let Some(ast::GenericArgs::AngleBracketed(args)) = last_segment.args.as_deref()
                     else {
                         return Vec::new();
                     };

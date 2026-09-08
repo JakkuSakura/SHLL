@@ -1,7 +1,6 @@
 use super::*;
 use crate::transforms::HirToAstLifter;
 use fp_core::ast;
-use fp_core::ast::package::PackageDescriptor;
 use fp_core::ast::package::provider::{FixedPackageProvider, PackageProvider};
 use fp_core::ast::package::{AstPackage, PackageId};
 use fp_core::ast::path::InPackagePath;
@@ -387,9 +386,9 @@ fn qualified_generic_paths_remain_types_even_when_value_lookup_succeeds() -> Res
     })));
     let arguments = ast::GenericArgs::AngleBracketed(ast::AngleBracketedArgs {
         span: Span::null(),
-        args: vec![ast::AngleBracketedArg::Arg(ast::GenericArg::Type(Box::new(
-            qualified.clone(),
-        )))],
+        args: vec![ast::AngleBracketedArg::Arg(ast::GenericArg::Type(
+            Box::new(qualified.clone()),
+        ))],
     });
     let lowered = generator.convert_path_arguments(&arguments)?;
     assert!(matches!(
@@ -1596,24 +1595,17 @@ fn transform_dynamic_type_resolves_foreign_trait_from_prelude() -> Result<()> {
         Rc::new(RefCell::new(hir::HirProgram::new())),
         hir::PackageId::new("dependency"),
     );
-    let mut dependency = dependency_lowerer.transform_package(&dependency_package)?;
-    let error_id = dependency
-        .items
-        .iter()
-        .find_map(|item| match item.kind {
-            hir::ItemKind::Trait(_) => Some(item.def_id.clone()),
-            _ => None,
-        })
-        .expect("dependency trait");
-    dependency.hir_exports.insert(
-        "dependency::prelude::v1::Error".to_string(),
-        hir::Res::Def(error_id.clone()),
-    );
-
+    let dependency = dependency_lowerer.transform_package(&dependency_package)?;
     let mut workspace = hir::HirProgram::new();
     workspace.add_package(std::rc::Rc::new(std::cell::RefCell::new(dependency)));
     let consumer_items = parser.parse_items_ast("pub struct Holder { value: dyn Error }")?;
-    let consumer_package = package_from_items(consumer_items)?;
+    let mut consumer_package = package_from_items_as(PackageId::new("consumer"), consumer_items)?;
+    consumer_package
+        .prelude_modules
+        .push(fp_core::ast::package::PackagePath::new(
+            PackageId::new("dependency"),
+            InPackagePath::new(vec!["prelude".into(), "v1".into()]),
+        ));
     let mut consumer_lowerer = AstToHirLowerer::new(
         std::rc::Rc::new(fp_core::ast::program::AstProgram::new(std::sync::Arc::new(
             fp_core::ast::package::provider::EmptyProvider,
@@ -2054,16 +2046,7 @@ fn transform_package_resolves_foreign_glob_reexport_through_selected_prelude() -
         PackageId::new("core"),
         core_items
             .into_iter()
-            .map(|item| {
-                (
-                    vec![
-                        "core".to_string(),
-                        "prelude".to_string(),
-                        "rust_2024".to_string(),
-                    ],
-                    item,
-                )
-            })
+            .map(|item| (vec!["prelude".to_string(), "rust_2024".to_string()], item))
             .collect(),
     )?;
     let mut core_lowerer = AstToHirLowerer::new(
@@ -2073,8 +2056,7 @@ fn transform_package_resolves_foreign_glob_reexport_through_selected_prelude() -
         Rc::new(RefCell::new(hir::HirProgram::new())),
         hir::PackageId::new("core"),
     );
-    let mut core = core_lowerer.transform_package(&core_source)?;
-    core.hir_exports = core_lowerer.exported_symbols();
+    let core = core_lowerer.transform_package(&core_source)?;
     let ok_def_id = core
         .items
         .iter()
@@ -2091,16 +2073,7 @@ fn transform_package_resolves_foreign_glob_reexport_through_selected_prelude() -
         PackageId::new("std"),
         std_items
             .into_iter()
-            .map(|item| {
-                (
-                    vec![
-                        "std".to_string(),
-                        "prelude".to_string(),
-                        "rust_2024".to_string(),
-                    ],
-                    item,
-                )
-            })
+            .map(|item| (vec!["prelude".to_string(), "rust_2024".to_string()], item))
             .collect(),
     )?;
     let mut std_lowerer = AstToHirLowerer::new(
@@ -2110,27 +2083,33 @@ fn transform_package_resolves_foreign_glob_reexport_through_selected_prelude() -
         Rc::new(RefCell::new(core_workspace)),
         hir::PackageId::new("std"),
     );
-    let mut std = std_lowerer.transform_package(&std_source)?;
-    std.hir_exports = std_lowerer.exported_symbols();
-    assert_eq!(
+    let std = std_lowerer.transform_package(&std_source)?;
+    assert!(matches!(
         std.module_data.resolve_module(
             &fp_core::hir::resolve::ModuleData::virtual_root_for(hir::PackageId::new("std")),
-            &["Ok".to_string()],
+            &[
+                "prelude".to_string(),
+                "rust_2024".to_string(),
+                "Ok".to_string(),
+            ],
             fp_core::hir::resolve::Namespace::Type,
         ),
-        fp_core::hir::resolve::ResolutionResult::Found(hir::Path {
-            span: Default::default(),
-            res: hir::Res::Def(ok_def_id.clone()),
-            segments: Vec::new(),
-        }),
-    );
+        fp_core::hir::resolve::ResolutionResult::Found(path)
+            if path.res == hir::Res::Def(ok_def_id.clone())
+    ));
 
     let workspace = std_lowerer.hir_program.clone();
     workspace
         .borrow_mut()
         .add_package(std::rc::Rc::new(std::cell::RefCell::new(std)));
     let consumer_items = parser.parse_items_ast("pub struct Holder { value: Ok }")?;
-    let consumer_source = package_from_items_as(PackageId::new("consumer"), consumer_items)?;
+    let mut consumer_source = package_from_items_as(PackageId::new("consumer"), consumer_items)?;
+    consumer_source
+        .prelude_modules
+        .push(fp_core::ast::package::PackagePath::new(
+            PackageId::new("std"),
+            InPackagePath::new(vec!["prelude".into(), "rust_2024".into()]),
+        ));
     let mut consumer_lowerer = AstToHirLowerer::new(
         std::rc::Rc::new(fp_core::ast::program::AstProgram::new(std::sync::Arc::new(
             fp_core::ast::package::provider::EmptyProvider,
@@ -2157,61 +2136,94 @@ fn transform_package_resolves_foreign_glob_reexport_through_selected_prelude() -
 #[test]
 fn transform_package_resolves_sysroot_io_result_reexport_chain() -> Result<()> {
     let parser = FerroPhaseParser::new();
-    let result_items = parser.parse_items_ast("pub struct Result<T, E>; pub struct Error;")?;
-    let core_io_items = parser
-        .parse_items_ast("use crate::result; pub type Result<T> = result::Result<T, Error>;")?;
-    let alloc_io_items = parser.parse_items_ast("pub use core::io::{Error, Result};")?;
-    let std_root_items = parser.parse_items_ast("extern crate alloc as alloc_crate;")?;
-    let std_io_items = parser.parse_items_ast("pub use alloc_crate::io::{Error, Result};")?;
-    let consumer_items =
-        parser.parse_items_ast("pub fn load() -> std::io::Result<i64> { loop {} }")?;
-    let source = package_from_items_with_paths_as(
-        PackageId::new("std"),
-        result_items
+    let workspace = Rc::new(RefCell::new(hir::HirProgram::new()));
+
+    let core_source = package_from_items_with_paths_as(
+        PackageId::new("core"),
+        parser
+            .parse_items_ast("pub struct Result<T, E>;")?
             .into_iter()
-            .map(|item| (vec!["core".to_string(), "result".to_string()], item))
+            .map(|item| (vec!["result".to_string()], item))
             .chain(
                 parser
-                    .parse_items_ast("pub struct Error;")?
+                    .parse_items_ast(
+                        "pub struct Error; \
+                         pub type Result<T> = crate::result::Result<T, Error>;",
+                    )?
                     .into_iter()
-                    .map(|item| (vec!["core".to_string(), "io".to_string()], item)),
-            )
-            .chain(
-                core_io_items
-                    .into_iter()
-                    .map(|item| (vec!["core".to_string(), "io".to_string()], item)),
-            )
-            .chain(
-                alloc_io_items
-                    .into_iter()
-                    .map(|item| (vec!["alloc".to_string(), "io".to_string()], item)),
-            )
-            .chain(
-                std_root_items
-                    .into_iter()
-                    .map(|item| (vec!["std".to_string()], item)),
-            )
-            .chain(
-                std_io_items
-                    .into_iter()
-                    .map(|item| (vec!["std".to_string(), "io".to_string()], item)),
-            )
-            .chain(
-                consumer_items
-                    .into_iter()
-                    .map(|item| (vec!["consumer".to_string()], item)),
+                    .map(|item| (vec!["io".to_string()], item)),
             )
             .collect(),
     )?;
-    let mut lowerer = AstToHirLowerer::new(
+    let mut core_lowerer = AstToHirLowerer::new(
         std::rc::Rc::new(fp_core::ast::program::AstProgram::new(std::sync::Arc::new(
             fp_core::ast::package::provider::EmptyProvider,
         ))),
-        Rc::new(RefCell::new(hir::HirProgram::new())),
+        workspace.clone(),
+        hir::PackageId::new("core"),
+    );
+    let core = core_lowerer.transform_package(&core_source)?;
+    workspace
+        .borrow_mut()
+        .add_package(Rc::new(RefCell::new(core)));
+
+    let alloc_source = package_from_items_with_paths_as(
+        PackageId::new("alloc"),
+        parser
+            .parse_items_ast("pub use core::io::{Error, Result};")?
+            .into_iter()
+            .map(|item| (vec!["io".to_string()], item))
+            .collect(),
+    )?;
+    let mut alloc_lowerer = AstToHirLowerer::new(
+        std::rc::Rc::new(fp_core::ast::program::AstProgram::new(std::sync::Arc::new(
+            fp_core::ast::package::provider::EmptyProvider,
+        ))),
+        workspace.clone(),
+        hir::PackageId::new("alloc"),
+    );
+    let alloc = alloc_lowerer.transform_package(&alloc_source)?;
+    workspace
+        .borrow_mut()
+        .add_package(Rc::new(RefCell::new(alloc)));
+
+    let std_source = package_from_items_with_paths_as(
+        PackageId::new("std"),
+        parser
+            .parse_items_ast("pub use alloc::io::{Error, Result};")?
+            .into_iter()
+            .map(|item| (vec!["io".to_string()], item))
+            .collect(),
+    )?;
+    let mut std_lowerer = AstToHirLowerer::new(
+        std::rc::Rc::new(fp_core::ast::program::AstProgram::new(std::sync::Arc::new(
+            fp_core::ast::package::provider::EmptyProvider,
+        ))),
+        workspace.clone(),
         hir::PackageId::new("std"),
     );
-    let program = lowerer.transform_package(&source)?;
-    let function = program
+    let std = std_lowerer.transform_package(&std_source)?;
+    workspace
+        .borrow_mut()
+        .add_package(Rc::new(RefCell::new(std)));
+
+    let consumer_source = package_from_items_with_paths_as(
+        PackageId::new("consumer"),
+        parser
+            .parse_items_ast("pub fn load() -> std::io::Result<i64> { loop {} }")?
+            .into_iter()
+            .map(|item| (Vec::new(), item))
+            .collect(),
+    )?;
+    let mut consumer_lowerer = AstToHirLowerer::new(
+        std::rc::Rc::new(fp_core::ast::program::AstProgram::new(std::sync::Arc::new(
+            fp_core::ast::package::provider::EmptyProvider,
+        ))),
+        workspace.clone(),
+        hir::PackageId::new("consumer"),
+    );
+    let consumer = consumer_lowerer.transform_package(&consumer_source)?;
+    let function = consumer
         .items
         .iter()
         .find_map(|item| match &item.kind {
@@ -2227,12 +2239,26 @@ fn transform_package_resolves_sysroot_io_result_reexport_chain() -> Result<()> {
     let hir::Res::Def(def_id) = &path.res() else {
         panic!("std::io::Result must resolve through std and alloc re-exports: {path:?}");
     };
-    let result = program
-        .items
-        .iter()
-        .find(|item| item.def_id == *def_id)
-        .expect("underlying Result definition");
-    assert!(matches!(result.kind, hir::ItemKind::Struct(_)));
+    assert_eq!(def_id.package_id, hir::PackageId::new("core"));
+    let result = workspace
+        .borrow()
+        .item(def_id.clone())
+        .expect("core Result alias definition");
+    let hir::ItemKind::TypeAlias(alias) = result.kind else {
+        panic!("std::io::Result must retain the core type alias identity");
+    };
+    let hir::TypeExprKind::Path(target) = alias.target.kind else {
+        panic!("core::io::Result must target core::result::Result");
+    };
+    let hir::Res::Def(target_def_id) = target.res() else {
+        panic!("core::io::Result target must resolve to its struct definition");
+    };
+    assert_eq!(target_def_id.package_id, hir::PackageId::new("core"));
+    let target = workspace
+        .borrow()
+        .item(target_def_id)
+        .expect("underlying Result struct definition");
+    assert!(matches!(target.kind, hir::ItemKind::Struct(_)));
     Ok(())
 }
 
@@ -2364,15 +2390,10 @@ fn transform_normalizes_bundled_std_external_crate_root() -> Result<()> {
     let parser = FerroPhaseParser::new();
     let dependency_items = parser.parse_items_ast("pub struct Formatter; pub struct Result;")?;
     let dependency_package = package_from_items_with_paths_as(
-        PackageId::new("dependency"),
+        PackageId::new("std"),
         dependency_items
             .into_iter()
-            .map(|item| {
-                (
-                    vec!["std".to_string(), "std".to_string(), "fmt".to_string()],
-                    item,
-                )
-            })
+            .map(|item| (vec!["fmt".to_string()], item))
             .collect(),
     )?;
     let mut dependency_lowerer = AstToHirLowerer::new(
@@ -2382,8 +2403,7 @@ fn transform_normalizes_bundled_std_external_crate_root() -> Result<()> {
         Rc::new(RefCell::new(hir::HirProgram::new())),
         hir::PackageId::new("std"),
     );
-    let mut dependency = dependency_lowerer.transform_package(&dependency_package)?;
-    dependency.hir_exports = dependency_lowerer.exported_symbols();
+    let dependency = dependency_lowerer.transform_package(&dependency_package)?;
 
     let formatter_id = dependency
         .items
@@ -2512,11 +2532,6 @@ fn transform_hyphenated_dependency_exports_use_rust_crate_root() -> Result<()> {
         hir::PackageId::new("skln-core"),
     );
     let dependency = dependency_lowerer.transform_package(&dependency_package)?;
-    let dependency_exports = dependency_lowerer.exported_symbols();
-    assert!(dependency_exports.contains_key("skln_core::error::CoreError"));
-    assert!(dependency_exports.contains_key("skln_core::types::ChangesResult"));
-    let mut dependency = dependency;
-    dependency.hir_exports = dependency_exports;
 
     let mut workspace = hir::HirProgram::new();
     workspace.add_package(std::rc::Rc::new(std::cell::RefCell::new(dependency)));
@@ -2738,13 +2753,6 @@ fn transform_hyphenated_dependency_root_reexport_uses_rust_crate_root() -> Resul
         hir::PackageId::new("skln-core"),
     );
     let dependency = dependency_lowerer.transform_package(&dependency_package)?;
-    let dependency_exports = dependency_lowerer.exported_symbols();
-    assert!(dependency_exports.contains_key("skln_core::CoreError"));
-    assert!(dependency_exports.contains_key("skln_core::error::CoreError"));
-    assert!(dependency_exports.contains_key("skln_core::types::ChangesResult"));
-    assert!(dependency_exports.contains_key("skln_core::types::RefNode"));
-    let mut dependency = dependency;
-    dependency.hir_exports = dependency_exports;
 
     let mut workspace = hir::HirProgram::new();
     workspace.add_package(std::rc::Rc::new(std::cell::RefCell::new(dependency)));
@@ -2774,67 +2782,6 @@ fn transform_hyphenated_dependency_root_reexport_uses_rust_crate_root() -> Resul
             .iter()
             .all(|field| { !matches!(field.ty.kind, hir::TypeExprKind::Error) })
     );
-    Ok(())
-}
-
-#[test]
-fn transform_provider_rooted_hyphenated_exports_replace_cargo_root() -> Result<()> {
-    let parser = FerroPhaseParser::new();
-    let dependency_items =
-        parser.parse_items_ast("pub struct CoreError; pub struct ChangesResult;")?;
-    let dependency_package = package_from_items_with_paths(
-        dependency_items
-            .into_iter()
-            .enumerate()
-            .map(|(index, item)| {
-                let module = if index == 0 { "error" } else { "types" };
-                (vec!["skln-core".to_string(), module.to_string()], item)
-            })
-            .collect(),
-    )?;
-    let mut dependency_lowerer = AstToHirLowerer::new(
-        std::rc::Rc::new(fp_core::ast::program::AstProgram::new(std::sync::Arc::new(
-            fp_core::ast::package::provider::EmptyProvider,
-        ))),
-        Rc::new(RefCell::new(hir::HirProgram::new())),
-        hir::PackageId::new("skln-core"),
-    );
-    let mut dependency = dependency_lowerer.transform_package(&dependency_package)?;
-    dependency.hir_exports = dependency_lowerer.exported_symbols();
-
-    let mut workspace = hir::HirProgram::new();
-    workspace.add_package(std::rc::Rc::new(std::cell::RefCell::new(dependency)));
-    let consumer_items = parser.parse_items_ast(
-        "pub struct Holder { error: skln_core::error::CoreError, result: skln_core::types::ChangesResult }",
-    )?;
-    let consumer_package = package_from_items(consumer_items)?;
-    let mut consumer_lowerer = AstToHirLowerer::new(
-        std::rc::Rc::new(fp_core::ast::program::AstProgram::new(std::sync::Arc::new(
-            fp_core::ast::package::provider::EmptyProvider,
-        ))),
-        Rc::new(RefCell::new(workspace)),
-        hir::PackageId::new("consumer"),
-    );
-    let consumer = consumer_lowerer.transform_package(&consumer_package)?;
-    let holder = consumer
-        .items
-        .iter()
-        .find_map(|item| match &item.kind {
-            hir::ItemKind::Struct(def) if def.name.as_str() == "Holder" => Some(def),
-            _ => None,
-        })
-        .expect("consumer Holder");
-    let expected = ["CoreError", "ChangesResult"];
-    for (field, name) in holder.fields.iter().zip(expected) {
-        let hir::TypeExprKind::Path(path) = &field.ty.kind else {
-            panic!("expected dependency path for {name}");
-        };
-        assert!(matches!(
-            path.res().as_ref(),
-            Some(hir::Res::Def(def_id))
-                if def_id.package_id == hir::PackageId::new("skln-core")
-        ));
-    }
     Ok(())
 }
 
@@ -4200,8 +4147,8 @@ fn transform_scoped_block_name_resolution() -> Result<()> {
         assert!(
             paths
                 .iter()
-                .all(|path| matches!(path.res(), hir::Res::Local(_))),
-            "expected {name} to resolve to a local"
+                .all(|path| matches!(path.res(), hir::Res::Local(_) | hir::Res::Parameter(_))),
+            "expected {name} to resolve to a lexical binding"
         );
     }
 
@@ -4302,7 +4249,9 @@ mod function_body_resolution {
     fn lowers_qualified_type_to_qpath() {
         let parser = FerroPhaseParser::new();
         let items = parser
-            .parse_items_ast("trait Trait { type Item; } struct Value; type Alias = <Value as Trait>::Item;")
+            .parse_items_ast(
+                "trait Trait { type Item; } struct Value; type Alias = <Value as Trait>::Item;",
+            )
             .expect("projection fixture should parse");
 
         let package = package_from_items(items).expect("projection fixture package");
@@ -4699,7 +4648,10 @@ mod function_body_resolution {
         let hir::ExprKind::Path(path) = &body_expr(function(&package, "identity")).kind else {
             panic!("expected parameter body to lower to a path");
         };
-        assert!(matches!(path.res(), hir::Res::Local(_)), "path: {path:?}");
+        assert!(
+            matches!(path.res(), hir::Res::Parameter(_)),
+            "path: {path:?}"
+        );
         assert!(
             diagnostics.iter().all(|diagnostic| !diagnostic
                 .message
@@ -4740,7 +4692,10 @@ mod function_body_resolution {
         let hir::ExprKind::Path(path) = &body_expr(function).kind else {
             panic!("expected generic function body to lower to a path");
         };
-        assert!(matches!(path.res(), hir::Res::Local(_)), "path: {path:?}");
+        assert!(
+            matches!(path.res(), hir::Res::Parameter(_)),
+            "path: {path:?}"
+        );
         assert!(
             diagnostics.iter().all(|diagnostic| !diagnostic
                 .message
@@ -4964,8 +4919,7 @@ mod function_body_resolution {
         let hir::ExprKind::Call(callee, _) = &body_expr(function(&package, "call")).kind else {
             panic!("expected associated-function call");
         };
-        let hir::ExprKind::Path(hir::QPath::TypeRelative(receiver, method)) = &callee.kind
-        else {
+        let hir::ExprKind::Path(hir::QPath::TypeRelative(receiver, method)) = &callee.kind else {
             panic!("expected type-relative callee, got {:?}", callee.kind);
         };
         assert_eq!(method.ident.as_str(), "inner");
@@ -5029,16 +4983,14 @@ mod function_body_resolution {
             span: Span::null(),
             obj: Box::new(ast::Expr::name(ast::Name::ident("Receiver"))),
             field: ast::Ident::new("method"),
-            generic_args: Some(ast::GenericArgs::AngleBracketed(
-                ast::AngleBracketedArgs {
-                    span: Span::null(),
-                    args: vec![ast::AngleBracketedArg::Arg(ast::GenericArg::Type(
-                        Box::new(ast::Ty::Primitive(ast::TypePrimitive::Int(
-                            ast::TypeInt::U8,
-                        ))),
-                    ))],
-                },
-            )),
+            generic_args: Some(ast::GenericArgs::AngleBracketed(ast::AngleBracketedArgs {
+                span: Span::null(),
+                args: vec![ast::AngleBracketedArg::Arg(ast::GenericArg::Type(
+                    Box::new(ast::Ty::Primitive(ast::TypePrimitive::Int(
+                        ast::TypeInt::U8,
+                    ))),
+                ))],
+            })),
         };
         let expr = ast::Expr::new(ast::ExprKind::Invoke(ast::ExprInvoke {
             span: Span::null(),
@@ -5093,7 +5045,7 @@ mod function_body_resolution {
             panic!("expected outer initializer path");
         };
         assert!(
-            matches!(outer_path.res(), hir::Res::Local(_)),
+            matches!(outer_path.res(), hir::Res::Parameter(_)),
             "path: {outer_path:?}"
         );
         let hir::ExprKind::Block(inner) = &body_expr(function).kind else {
@@ -5621,7 +5573,10 @@ mod function_body_resolution {
             else_branch.as_ref(),
         ] {
             let path = branch_path(expression);
-            assert!(matches!(path.res(), hir::Res::Local(_)), "path: {path:?}");
+            assert!(
+                matches!(path.res(), hir::Res::Parameter(_)),
+                "path: {path:?}"
+            );
         }
     }
 
@@ -5758,12 +5713,18 @@ mod function_body_resolution {
             })
             .expect("get method");
         let hir::ExprKind::FieldAccess(receiver, field) = &body_expr(method).kind else {
-            panic!("expected runtime self field access: {:?}", body_expr(method));
+            panic!(
+                "expected runtime self field access: {:?}",
+                body_expr(method)
+            );
         };
         let hir::ExprKind::Path(path) = &receiver.kind else {
             panic!("expected self field receiver path: {receiver:?}");
         };
-        assert!(matches!(path.res(), hir::Res::Local(_)), "path: {path:?}");
+        assert!(
+            matches!(path.res(), hir::Res::Parameter(_)),
+            "path: {path:?}"
+        );
         assert_eq!(field.as_str(), "field");
     }
 
@@ -6549,25 +6510,11 @@ fn transform_package_expands_macro_invocation_before_definition() -> Result<()> 
     Ok(())
 }
 
-/// Real `core::panic::Location` shape, inside the vendored real-`std`
-/// package's own two-segment sub-crate module paths (`["std", "core", ...]`
-/// — see `transform_package_plain_absolute_path_into_vendored_subcrate`'s
-/// doc comment for why the bundled package needs this): `panic.rs` (module
-/// path `["std", "core", "panic"]`) has `mod location;` (a private
-/// submodule, `["std", "core", "panic", "location"]`) plus `pub use
-/// self::location::Location;` re-exporting it one level up, and `cell.rs`
-/// (module path `["std", "core", "cell"]`) references the type via the
-/// fully-qualified absolute path `crate::panic::Location` with no `use` of
-/// its own — real `core/cell.rs`'s actual style (`borrowed_at: Cell<Option
-/// <&'static crate::panic::Location<'static>>>`). Isolates whether the
-/// `crate::`-prefixed absolute path's crate-root candidate walk
-/// (`name_to_hir_path_with_scope`'s `crate_root_candidates`) resolves
-/// against the correct two-segment sub-crate root before falling back to
-/// the wrong one-segment root, for a path that depends on a same-file-level
-/// re-export chain rather than a direct definition.
+/// Real `core::panic::Location` shape: `panic.rs` has a private `location`
+/// submodule plus `pub use self::location::Location`, while `cell.rs`
+/// references the re-export through `crate::panic::Location`.
 #[test]
-fn transform_package_resolves_crate_absolute_path_to_self_reexport_in_vendored_subcrate()
--> Result<()> {
+fn transform_package_resolves_crate_absolute_path_to_self_reexport() -> Result<()> {
     let location_item = make_struct("Location", vec![("value", int_ty())]);
 
     let panic_self_reexport = ast::Item::from(ast::ItemKind::Import(ast::ItemImport {
@@ -6602,30 +6549,19 @@ fn transform_package_resolves_crate_absolute_path_to_self_reexport_in_vendored_s
 
     let items = vec![
         (
-            vec![
-                "std".to_string(),
-                "core".to_string(),
-                "panic".to_string(),
-                "location".to_string(),
-            ],
+            vec!["panic".to_string(), "location".to_string()],
             location_item,
         ),
-        (
-            vec!["std".to_string(), "core".to_string(), "panic".to_string()],
-            panic_self_reexport,
-        ),
-        (
-            vec!["std".to_string(), "core".to_string(), "cell".to_string()],
-            cell_fn_item,
-        ),
+        (vec!["panic".to_string()], panic_self_reexport),
+        (vec!["cell".to_string()], cell_fn_item),
     ];
-    let package = package_from_items_with_paths(items)?;
+    let package = package_from_items_with_paths_as(PackageId::new("core"), items)?;
     let mut generator = AstToHirLowerer::new(
         std::rc::Rc::new(fp_core::ast::program::AstProgram::new(std::sync::Arc::new(
             fp_core::ast::package::provider::EmptyProvider,
         ))),
         Rc::new(RefCell::new(hir::HirProgram::new())),
-        hir::PackageId::new("test"),
+        hir::PackageId::new("core"),
     );
     let program = generator.transform_package(&package)?;
 

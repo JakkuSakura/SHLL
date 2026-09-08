@@ -15,12 +15,14 @@ pub fn eliminate_dead_code(program: &mut hir::HirPackage, entrypoint: Option<hir
     }
 
     let tail_map = build_tail_name_map(program);
+    let retained_item_roots = || {
+        program.items.iter().filter_map(|item| {
+            (!matches!(item.kind, hir::ItemKind::Function(_))).then(|| item.def_id.clone())
+        })
+    };
     let root_ids: Vec<_> = if let Some(def_id) = entrypoint {
         std::iter::once(def_id)
-            .chain(program.items.iter().filter_map(|item| match &item.kind {
-                hir::ItemKind::Query(_) | hir::ItemKind::Expr(_) => Some(item.def_id.clone()),
-                _ => None,
-            }))
+            .chain(retained_item_roots())
             .collect()
     } else {
         program
@@ -30,9 +32,8 @@ pub fn eliminate_dead_code(program: &mut hir::HirPackage, entrypoint: Option<hir
                 hir::ItemKind::Function(function) if function.sig.name.as_str() == "main" => {
                     Some(item.def_id.clone())
                 }
-                hir::ItemKind::Query(_) => Some(item.def_id.clone()),
-                hir::ItemKind::Expr(_) => Some(item.def_id.clone()),
-                _ => None,
+                hir::ItemKind::Function(_) => None,
+                _ => Some(item.def_id.clone()),
             })
             .collect()
     };
@@ -71,22 +72,8 @@ fn has_unresolved_paths(program: &hir::HirPackage) -> bool {
 
 fn item_has_unresolved_paths(item: &hir::Item) -> bool {
     match &item.kind {
-        hir::ItemKind::Function(function) => {
-            function.sig.inputs.iter().any(|param| {
-                type_has_unresolved_paths(&param.ty)
-                    || param
-                        .default
-                        .as_ref()
-                        .is_some_and(expr_has_unresolved_paths)
-            }) || type_has_unresolved_paths(&function.sig.output)
-                || function
-                    .body
-                    .as_ref()
-                    .is_some_and(block_has_unresolved_paths)
-        }
-        hir::ItemKind::Const(def) => {
-            type_has_unresolved_paths(&def.ty) || expr_has_unresolved_paths(&def.body.value)
-        }
+        hir::ItemKind::Function(function) => function_has_unresolved_paths(function),
+        hir::ItemKind::Const(def) => const_has_unresolved_paths(def),
         hir::ItemKind::Struct(def) => def
             .fields
             .iter()
@@ -102,11 +89,55 @@ fn item_has_unresolved_paths(item: &hir::Item) -> bool {
                     .is_some_and(expr_has_unresolved_paths)
         }),
         hir::ItemKind::TypeAlias(alias) => type_has_unresolved_paths(&alias.target),
-        hir::ItemKind::Impl(_) => true,
-        hir::ItemKind::Trait(_) => true,
+        hir::ItemKind::Impl(impl_) => {
+            impl_
+                .trait_ty
+                .as_ref()
+                .is_some_and(type_has_unresolved_paths)
+                || type_has_unresolved_paths(&impl_.self_ty)
+                || impl_.items.iter().any(|item| match &item.kind {
+                    hir::ImplItemKind::Method(function) => function_has_unresolved_paths(function),
+                    hir::ImplItemKind::AssocConst(def) => const_has_unresolved_paths(def),
+                    hir::ImplItemKind::AssocType(assoc) => type_has_unresolved_paths(&assoc.ty),
+                })
+        }
+        hir::ItemKind::Trait(trait_) => {
+            trait_.supertraits.iter().any(path_has_unresolved_segments)
+                || trait_.items.iter().any(|item| match &item.kind {
+                    hir::TraitItemKind::Method(function) => function_has_unresolved_paths(function),
+                    hir::TraitItemKind::AssocConst(def) => {
+                        type_has_unresolved_paths(&def.ty)
+                            || def
+                                .body
+                                .as_ref()
+                                .is_some_and(|body| expr_has_unresolved_paths(&body.value))
+                    }
+                    hir::TraitItemKind::AssocType(assoc) => {
+                        assoc.bounds.iter().any(type_has_unresolved_paths)
+                    }
+                })
+        }
         hir::ItemKind::Query(_) => false,
         hir::ItemKind::Expr(expr) => expr_has_unresolved_paths(expr),
     }
+}
+
+fn function_has_unresolved_paths(function: &hir::Function) -> bool {
+    function.sig.inputs.iter().any(|param| {
+        type_has_unresolved_paths(&param.ty)
+            || param
+                .default
+                .as_ref()
+                .is_some_and(expr_has_unresolved_paths)
+    }) || type_has_unresolved_paths(&function.sig.output)
+        || function
+            .body
+            .as_ref()
+            .is_some_and(block_has_unresolved_paths)
+}
+
+fn const_has_unresolved_paths(def: &hir::Const) -> bool {
+    type_has_unresolved_paths(&def.ty) || expr_has_unresolved_paths(&def.body.value)
 }
 
 fn expr_has_unresolved_paths(expr: &hir::Expr) -> bool {
@@ -322,22 +353,8 @@ pub(crate) fn collect_item_refs(
     work: &mut VecDeque<hir::DefId>,
 ) {
     match &item.kind {
-        hir::ItemKind::Function(function) => {
-            for param in &function.sig.inputs {
-                collect_type_refs(&param.ty, tail_map, work);
-                if let Some(default) = &param.default {
-                    collect_expr_refs(default, tail_map, work);
-                }
-            }
-            collect_type_refs(&function.sig.output, tail_map, work);
-            if let Some(body) = &function.body {
-                collect_block_refs(body, tail_map, work);
-            }
-        }
-        hir::ItemKind::Const(def) => {
-            collect_type_refs(&def.ty, tail_map, work);
-            collect_expr_refs(&def.body.value, tail_map, work);
-        }
+        hir::ItemKind::Function(function) => collect_function_refs(function, tail_map, work),
+        hir::ItemKind::Const(def) => collect_const_refs(def, tail_map, work),
         hir::ItemKind::Struct(def) => {
             for field in &def.fields {
                 collect_type_refs(&field.ty, tail_map, work);
@@ -354,11 +371,75 @@ pub(crate) fn collect_item_refs(
             }
         }
         hir::ItemKind::TypeAlias(alias) => collect_type_refs(&alias.target, tail_map, work),
-        hir::ItemKind::Impl(_) => {}
-        hir::ItemKind::Trait(_) => {}
+        hir::ItemKind::Impl(impl_) => {
+            if let Some(trait_ty) = &impl_.trait_ty {
+                collect_type_refs(trait_ty, tail_map, work);
+            }
+            collect_type_refs(&impl_.self_ty, tail_map, work);
+            for item in &impl_.items {
+                match &item.kind {
+                    hir::ImplItemKind::Method(function) => {
+                        collect_function_refs(function, tail_map, work)
+                    }
+                    hir::ImplItemKind::AssocConst(def) => collect_const_refs(def, tail_map, work),
+                    hir::ImplItemKind::AssocType(assoc) => {
+                        collect_type_refs(&assoc.ty, tail_map, work)
+                    }
+                }
+            }
+        }
+        hir::ItemKind::Trait(trait_) => {
+            for supertrait in &trait_.supertraits {
+                collect_path_refs(supertrait, tail_map, work);
+            }
+            for item in &trait_.items {
+                match &item.kind {
+                    hir::TraitItemKind::Method(function) => {
+                        collect_function_refs(function, tail_map, work)
+                    }
+                    hir::TraitItemKind::AssocConst(def) => {
+                        collect_type_refs(&def.ty, tail_map, work);
+                        if let Some(body) = &def.body {
+                            collect_expr_refs(&body.value, tail_map, work);
+                        }
+                    }
+                    hir::TraitItemKind::AssocType(assoc) => {
+                        for bound in &assoc.bounds {
+                            collect_type_refs(bound, tail_map, work);
+                        }
+                    }
+                }
+            }
+        }
         hir::ItemKind::Query(_) => {}
         hir::ItemKind::Expr(expr) => collect_expr_refs(expr, tail_map, work),
     }
+}
+
+fn collect_function_refs(
+    function: &hir::Function,
+    tail_map: &HashMap<String, hir::DefId>,
+    work: &mut VecDeque<hir::DefId>,
+) {
+    for param in &function.sig.inputs {
+        collect_type_refs(&param.ty, tail_map, work);
+        if let Some(default) = &param.default {
+            collect_expr_refs(default, tail_map, work);
+        }
+    }
+    collect_type_refs(&function.sig.output, tail_map, work);
+    if let Some(body) = &function.body {
+        collect_block_refs(body, tail_map, work);
+    }
+}
+
+fn collect_const_refs(
+    def: &hir::Const,
+    tail_map: &HashMap<String, hir::DefId>,
+    work: &mut VecDeque<hir::DefId>,
+) {
+    collect_type_refs(&def.ty, tail_map, work);
+    collect_expr_refs(&def.body.value, tail_map, work);
 }
 
 fn block_has_unresolved_paths(block: &hir::Block) -> bool {

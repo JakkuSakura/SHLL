@@ -245,6 +245,37 @@ impl AstToHirLowerer {
         }
     }
 
+    pub(super) fn register_parameter_bindings(&mut self, pat: &hir::Pat) {
+        match &pat.kind {
+            hir::PatKind::Binding { name, .. } => {
+                self.local_resolver.declare(
+                    name.as_str(),
+                    fp_core::hir::resolve::Binding::Parameter {
+                        id: pat.hir_id.clone(),
+                        namespace: fp_core::hir::resolve::Namespace::Value,
+                        span: Span::null(),
+                    },
+                );
+            }
+            hir::PatKind::Struct(_, fields, _) => {
+                for field in fields {
+                    self.register_parameter_bindings(&field.pat);
+                }
+            }
+            hir::PatKind::TupleStruct(_, parts) => {
+                for part in parts {
+                    self.register_parameter_bindings(part);
+                }
+            }
+            hir::PatKind::Tuple(elements) => {
+                for element in elements {
+                    self.register_parameter_bindings(element);
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn transform_variant_pattern(
         &mut self,
         name: &ast::Expr,
@@ -265,11 +296,8 @@ impl AstToHirLowerer {
             }
         }
 
-        let path = self.ast_expr_to_hir_path(
-            name,
-            PathResolutionScope::Value,
-            ParamMode::Optional,
-        )?;
+        let path =
+            self.ast_expr_to_hir_path(name, PathResolutionScope::Value, ParamMode::Optional)?;
 
         if let Some(pattern) = nested {
             match pattern.kind() {

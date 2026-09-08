@@ -512,6 +512,13 @@ impl LocalScope {
             .symbols
             .entry(symbol.into())
             .or_default();
+        if matches!(binding, Binding::Local { .. }) {
+            let namespace = binding.namespace();
+            entries.retain(|old| {
+                old.namespace() != namespace
+                    || !matches!(old, Binding::Local { .. } | Binding::Parameter { .. })
+            });
+        }
         if entries
             .iter()
             .any(|old| old.namespace() == binding.namespace())
@@ -573,6 +580,28 @@ mod tests {
         match result {
             ResolutionResult::Found(path) => path.res,
             other => panic!("expected found, got {other:?}"),
+        }
+    }
+
+    fn local(id: u32) -> Binding {
+        Binding::Local {
+            id: crate::hir::HirId::new(
+                crate::hir::OwnerId::root(crate::hir::PackageId::new("test")),
+                id,
+            ),
+            namespace: Namespace::Value,
+            span: Span::null(),
+        }
+    }
+
+    fn parameter(id: u32) -> Binding {
+        Binding::Parameter {
+            id: crate::hir::HirId::new(
+                crate::hir::OwnerId::root(crate::hir::PackageId::new("test")),
+                id,
+            ),
+            namespace: Namespace::Value,
+            span: Span::null(),
         }
     }
 
@@ -657,5 +686,50 @@ mod tests {
             resolved(tree.resolve_child(&root, "log", Namespace::Macro)),
             def(2)
         );
+    }
+
+    #[test]
+    fn later_local_shadows_local_in_same_scope() {
+        let mut scope = LocalScope::new();
+        assert_eq!(
+            scope.declare("x", local(1), DeclarationRules::rust()),
+            DeclarationOutcome::Inserted
+        );
+        assert_eq!(
+            scope.declare("x", local(2), DeclarationRules::rust()),
+            DeclarationOutcome::Inserted
+        );
+        assert!(matches!(
+            resolved(scope.resolve("x", Namespace::Value, ResolutionRules::rust())),
+            crate::hir::Res::Local(id) if id.local_id.0 == 2
+        ));
+    }
+
+    #[test]
+    fn local_shadows_parameter_but_duplicate_parameters_conflict() {
+        let mut scope = LocalScope::new();
+        assert_eq!(
+            scope.declare("x", parameter(1), DeclarationRules::rust()),
+            DeclarationOutcome::Inserted
+        );
+        assert_eq!(
+            scope.declare("x", parameter(2), DeclarationRules::rust()),
+            DeclarationOutcome::Conflict
+        );
+        assert_eq!(
+            scope.resolve("x", Namespace::Value, ResolutionRules::rust()),
+            ResolutionResult::Ambiguous
+        );
+
+        let mut scope = LocalScope::new();
+        scope.declare("x", parameter(1), DeclarationRules::rust());
+        assert_eq!(
+            scope.declare("x", local(2), DeclarationRules::rust()),
+            DeclarationOutcome::Inserted
+        );
+        assert!(matches!(
+            resolved(scope.resolve("x", Namespace::Value, ResolutionRules::rust())),
+            crate::hir::Res::Local(id) if id.local_id.0 == 2
+        ));
     }
 }

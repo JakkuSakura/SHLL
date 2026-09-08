@@ -1708,7 +1708,7 @@ impl<'a> HirToAstLifter<'a> {
                         })
                     })
                     .transpose()?,
-                path: self.lift_ast_path(path)?,
+                path: self.lift_path(path)?,
             }),
             hir::QPath::TypeRelative(receiver, segment) => {
                 let mut associated = vec![segment.clone()];
@@ -1738,12 +1738,12 @@ impl<'a> HirToAstLifter<'a> {
                             let hir::Res::Def(def_id) = &segment.res else {
                                 return None;
                             };
-                        self.hir_program
-                            .item(def_id.clone())
-                            .filter(|item| matches!(&item.kind, hir::ItemKind::Trait(_)))
-                            .map(|_| index + 1)
-                    })
-                    .unwrap_or_else(|| trait_path.segments.len().saturating_sub(1));
+                            self.hir_program
+                                .item(def_id.clone())
+                                .filter(|item| matches!(&item.kind, hir::ItemKind::Trait(_)))
+                                .map(|_| index + 1)
+                        })
+                        .unwrap_or_else(|| trait_path.segments.len().saturating_sub(1));
                     return Ok(Name {
                         qself: Some(ast::QSelf {
                             ty: Box::new(self.lift_type(qself)?),
@@ -1777,13 +1777,11 @@ impl<'a> HirToAstLifter<'a> {
             return Ok(ast::GenericArgs::ParenthesizedElided(args.span_ext));
         }
         if matches!(args.parenthesized, hir::GenericArgsParentheses::ParenSugar) {
-            let (hir_inputs, hir_output) = args
-                .paren_sugar_inputs_output()
-                .ok_or_else(|| {
-                    fp_core::error::Error::from(
-                        "malformed parenthesized HIR generic arguments".to_owned(),
-                    )
-                })?;
+            let (hir_inputs, hir_output) = args.paren_sugar_inputs_output().ok_or_else(|| {
+                fp_core::error::Error::from(
+                    "malformed parenthesized HIR generic arguments".to_owned(),
+                )
+            })?;
             let inputs = hir_inputs
                 .iter()
                 .map(|input| self.lift_type(input))
@@ -1818,12 +1816,11 @@ impl<'a> HirToAstLifter<'a> {
             .args
             .iter()
             .map(|arg| match arg {
-                hir::GenericArg::Lifetime(lifetime) => Ok(ast::AngleBracketedArg::Arg(
-                    ast::GenericArg::Lifetime(ast::Lifetime::from_name(
-                        lifetime.as_str(),
-                        lifetime.span(),
-                    )),
-                )),
+                hir::GenericArg::Lifetime(lifetime) => {
+                    Ok(ast::AngleBracketedArg::Arg(ast::GenericArg::Lifetime(
+                        ast::Lifetime::from_name(lifetime.as_str(), lifetime.span()),
+                    )))
+                }
                 hir::GenericArg::Type(ty) => self
                     .lift_type(ty)
                     .map(|ty| ast::AngleBracketedArg::Arg(ast::GenericArg::Type(Box::new(ty)))),
@@ -1889,12 +1886,10 @@ impl<'a> HirToAstLifter<'a> {
                 }),
             });
         }
-        Ok(ast::GenericArgs::AngleBracketed(
-            ast::AngleBracketedArgs {
-                span: args.span_ext,
-                args: lifted,
-            },
-        ))
+        Ok(ast::GenericArgs::AngleBracketed(ast::AngleBracketedArgs {
+            span: args.span_ext,
+            args: lifted,
+        }))
     }
 
     fn lift_const_arg(&self, arg: &hir::ConstArg) -> Result<ast::Expr> {
@@ -2253,7 +2248,7 @@ impl<'a> HirToAstLifter<'a> {
     /// through to the plain conversion below, which is simply correct for
     /// those, not a guess.
     fn lift_path(&self, path: &hir::Path) -> Result<Path> {
-        if let hir::Res::Local(hir_id) = &path.res() {
+        if let hir::Res::Local(hir_id) | hir::Res::Parameter(hir_id) = &path.res() {
             if let Some(renamed) = self.renamed_locals.borrow().get(hir_id) {
                 return Ok(Path::plain(vec![Ident::new(renamed.clone())]));
             }
@@ -2343,7 +2338,7 @@ fn expr_assigns_local(expr: &hir::Expr, target: hir::HirId) -> bool {
         hir::ExprKind::Assign(lhs, rhs) => {
             let assigns_target = matches!(
                 &lhs.kind,
-                hir::ExprKind::Path(path) if matches!(path.res_ref(), hir::Res::Local(id) if *id == target)
+                hir::ExprKind::Path(path) if matches!(path.res_ref(), hir::Res::Local(id) | hir::Res::Parameter(id) if *id == target)
             );
             assigns_target
                 || expr_assigns_local(lhs, target.clone())
@@ -2377,7 +2372,7 @@ fn expr_assigns_local(expr: &hir::Expr, target: hir::HirId) -> bool {
                 && args.is_empty()
                 && matches!(
                     &recv.kind,
-                    hir::ExprKind::Path(path) if matches!(path.res_ref(), hir::Res::Local(id) if *id == target)
+                    hir::ExprKind::Path(path) if matches!(path.res_ref(), hir::Res::Local(id) | hir::Res::Parameter(id) if *id == target)
                 );
             resets_target
                 || expr_assigns_local(recv, target.clone())
@@ -2597,12 +2592,19 @@ mod tests {
 
     #[test]
     fn portable_op_converter_emits_method_ast_from_declared_operation() {
-        let op = test_operation("option_unwrap");
         let mut operations = fp_core::lang::LangItemRegistry::default();
+        let op = fp_core::intrinsics::PortableOp::new(
+            "option_unwrap",
+            fp_core::intrinsics::ArityShape {
+                receiver: true,
+                min_args: 1,
+            },
+            fp_core::intrinsics::ResultTypeRule::NotStaticallyKnowable,
+        );
         operations.insert_method_op(
             "Option",
             "unwrapOrTarget",
-            op,
+            op.clone(),
             ast::Path::plain(vec![
                 ast::Ident::new("kotlin"),
                 ast::Ident::new("Option"),
@@ -2614,7 +2616,7 @@ mod tests {
             .convert(
                 PortableOpCall {
                     span: Span::null(),
-                    op: test_operation("option_unwrap"),
+                    op,
                     args: vec![Expr::name(Name::ident("value"))],
                     kwargs: Vec::new(),
                 },
@@ -2738,8 +2740,7 @@ mod tests {
         workspace.publish_package(package.clone());
         let lifter = HirToAstLifter::new(&package, &workspace);
         let lifted = lifter.lift_path(&path).expect("lift generic path");
-        let Some(ast::GenericArgs::AngleBracketed(args)) =
-            lifted.segments[0].args.as_deref()
+        let Some(ast::GenericArgs::AngleBracketed(args)) = lifted.segments[0].args.as_deref()
         else {
             panic!("expected lifted generic arguments");
         };
@@ -2805,8 +2806,7 @@ mod tests {
         workspace.publish_package(package.clone());
         let lifter = HirToAstLifter::new(&package, &workspace);
         let lifted = lifter.lift_path(&path).expect("lift const-infer path");
-        let Some(ast::GenericArgs::AngleBracketed(args)) =
-            lifted.segments[0].args.as_deref()
+        let Some(ast::GenericArgs::AngleBracketed(args)) = lifted.segments[0].args.as_deref()
         else {
             panic!("expected lifted generic arguments");
         };
@@ -3727,11 +3727,31 @@ mod tests {
         let mut workspace = hir::HirProgram::new();
         workspace.publish_package(result_package);
         workspace.publish_package(root.clone());
+        let mut source_operations = fp_core::lang::LangItemRegistry::default();
+        source_operations.insert_method_op(
+            "Result",
+            "propagate",
+            fp_core::intrinsics::PortableOp::new(
+                "result_propagate",
+                fp_core::intrinsics::ArityShape {
+                    receiver: true,
+                    min_args: 1,
+                },
+                fp_core::intrinsics::ResultTypeRule::NotStaticallyKnowable,
+            ),
+            ast::Path::plain(vec![
+                ast::Ident::new("core"),
+                ast::Ident::new("result"),
+                ast::Ident::new("Result"),
+                ast::Ident::new("propagate"),
+            ]),
+        );
         let lifter = HirToAstLifter::new(&root, &workspace)
             .with_capabilities(fp_core::capabilities::LanguageCapabilities {
                 portable_operations: true,
                 ..fp_core::capabilities::LanguageCapabilities::NATIVE
             })
+            .with_source_operations(source_operations)
             .with_materializer(Arc::new(TestMaterializer));
 
         let lifted = lifter.lift_expr(&try_expr).expect("lift typed Result try");
