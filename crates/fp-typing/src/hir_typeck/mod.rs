@@ -4179,6 +4179,26 @@ impl HirTypeChecker {
                 return Ok(Ty { kind: TyKind::Type });
             }
         }
+        // Type aliases used as an associated-item receiver (for example
+        // `Digit32::BITS` where `type Digit32 = u32`) retain the alias
+        // definition on the path while the associated segment is unresolved
+        // by the lossy HIR lowering. Resolve the alias first, then perform
+        // the same associated-item lookup rustc performs after alias
+        // normalization.
+        if path.segments.len() == 2 && matches!(path.res, hir::Res::Def(_)) {
+            let mut base_path = path.clone();
+            base_path.segments.pop();
+            let base = hir::QPath::Resolved(None, base_path);
+            let base_ty = self.path_ty(base.path().expect("alias base path")).await?;
+            if !ty_contains_error(&base_ty) {
+                if let Some(item_ty) = self
+                    .method_declared_signature_at(&base_ty, &path.segments[1].ident)
+                    .await?
+                {
+                    return Ok(item_ty);
+                }
+            }
+        }
         // Macro-expanded primitive associated-constant method paths such as
         // `u128::MAX.ilog10()` arrive as `u128::MAX::ilog10`. The constant
         // supplies the receiver value, so the callable exposed to the
