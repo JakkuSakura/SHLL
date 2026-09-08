@@ -2555,11 +2555,9 @@ impl HirTypeChecker {
             if formatter_append {
                 return Ok(self.unit_ty());
             }
-            // Keep an earlier receiver error authoritative. Rustc still
-            // checks the argument expressions for recovery, but does not
-            // emit a cascading "method not found" error for an `Error`
-            // receiver (the bignum `carrying_add` calls commonly reach this
-            // path after a lossy iterator expression has already failed).
+            // Keep an earlier operand error authoritative. Rustc still
+            // checks argument expressions for recovery, but does not emit a
+            // cascading "method not found" error once an operand is `Error`.
             if arg_types.iter().any(ty_contains_error) {
                 return Ok(receiver_ty);
             }
@@ -5967,9 +5965,6 @@ impl HirTypeChecker {
                         Some(&function.sig.generics),
                         explicit_generic_args,
                     )?;
-                    if method.as_str() == "mul_small" {
-                        eprintln!("mul_small instantiated={:?}", instantiated);
-                    }
                     let Some((mut substitutions, mut result)) = instantiated else {
                         continue;
                     };
