@@ -6636,10 +6636,15 @@ impl HirTypeChecker {
                 {
                     return Some(result);
                 }
-                let hir::Res::Def(enum_id) = resolved.res_ref() else {
+                let item = if let hir::Res::Def(enum_id) = resolved.res_ref() {
+                    self.program_rc().item(enum_id.clone())?
+                } else {
+                    // Lossy lowering can leave an enum variant path with an
+                    // error/module owner. Rustc resolves the final variant
+                    // against the scrutinee's enum type, so recover that
+                    // owner when the path itself is not authoritative.
                     return None;
                 };
-                let item = self.program_rc().item(enum_id.clone())?;
                 let hir::ItemKind::Enum(def) = &item.kind else {
                     return None;
                 };
@@ -6675,7 +6680,19 @@ impl HirTypeChecker {
         path: &hir::QPath,
         scrutinee: &Ty,
     ) -> Result<(Ty, Vec<Ty>)> {
-        let Some((item, variant)) = self.enum_variant_for_qpath(path).await else {
+        let variant_lookup = self.enum_variant_for_qpath(path).await.or_else(|| {
+            let TyKind::Adt(adt, _) = &scrutinee.kind else {
+                return None;
+            };
+            let item = self.program_rc().item(adt.did.clone())?;
+            let hir::ItemKind::Enum(def) = &item.kind else {
+                return None;
+            };
+            let name = path.segments().last()?.ident.clone();
+            let variant = def.variants.iter().find(|variant| variant.name == name)?.clone();
+            Some((item, variant))
+        });
+        let Some((item, variant)) = variant_lookup else {
             return Ok((self.error_ty("variant pattern is unresolved"), Vec::new()));
         };
         let hir::ItemKind::Enum(def) = &item.kind else {
