@@ -320,7 +320,7 @@ fn optional_path_parameters_infer_when_arguments_have_no_types_or_consts() {
         std::rc::Rc::new(fp_core::ast::program::AstProgram::new(std::sync::Arc::new(
             fp_core::ast::package::provider::EmptyProvider,
         ))),
-        hir::SharedHirProgram::new(hir::HirProgram::new()),
+        Rc::new(RefCell::new(hir::HirProgram::new())),
         hir::PackageId::new("test"),
     );
     let segment = generator.make_path_segment(
@@ -360,7 +360,7 @@ fn qualified_generic_paths_remain_types_even_when_value_lookup_succeeds() -> Res
         std::rc::Rc::new(fp_core::ast::program::AstProgram::new(std::sync::Arc::new(
             fp_core::ast::package::provider::EmptyProvider,
         ))),
-        hir::SharedHirProgram::new(hir::HirProgram::new()),
+        Rc::new(RefCell::new(hir::HirProgram::new())),
         package_id.clone(),
     );
     let root = hir::resolve::ModuleData::virtual_root_for(package_id.clone());
@@ -372,6 +372,7 @@ fn qualified_generic_paths_remain_types_even_when_value_lookup_succeeds() -> Res
     );
     generator
         .hir_program
+        .borrow_mut()
         .add_package(generator.hir_package_handle());
 
     let qualified = ast::Ty::Expr(Box::new(ast::Expr::name(ast::Name {
@@ -4309,7 +4310,7 @@ mod function_body_resolution {
             std::rc::Rc::new(AstProgram::new(std::sync::Arc::new(
                 fp_core::ast::package::provider::EmptyProvider,
             ))),
-            hir::SharedHirProgram::new(hir::HirProgram::new()),
+            Rc::new(RefCell::new(hir::HirProgram::new())),
             package_id,
         );
         let lowered = lowerer
@@ -5008,7 +5009,7 @@ mod function_body_resolution {
             std::rc::Rc::new(fp_core::ast::program::AstProgram::new(std::sync::Arc::new(
                 fp_core::ast::package::provider::EmptyProvider,
             ))),
-            hir::SharedHirProgram::new(hir::HirProgram::new()),
+            Rc::new(RefCell::new(hir::HirProgram::new())),
             package_id.clone(),
         );
         let receiver_def = hir::DefId::new(package_id.clone(), 7);
@@ -5020,6 +5021,7 @@ mod function_body_resolution {
         );
         generator
             .hir_program
+            .borrow_mut()
             .add_package(generator.hir_package_handle());
 
         let select = ast::ExprFieldAccess {
@@ -5184,8 +5186,11 @@ mod function_body_resolution {
         else {
             panic!("expected closure body to add capture and parameter: {body:?}");
         };
-        let hir::ExprKind::Path(capture_path) = &capture.kind else {
-            panic!("expected captured input path: {capture:?}");
+        let hir::ExprKind::FieldAccess(environment, field) = &capture.kind else {
+            panic!("expected captured input field access: {capture:?}");
+        };
+        let hir::ExprKind::Path(capture_path) = &environment.kind else {
+            panic!("expected captured input environment path: {environment:?}");
         };
         assert_eq!(
             capture_path
@@ -5193,8 +5198,9 @@ mod function_body_resolution {
                 .iter()
                 .map(|segment| segment.ident.as_str())
                 .collect::<Vec<_>>(),
-            ["input"]
+            ["__env"]
         );
+        assert_eq!(field.as_str(), "input");
         let hir::ExprKind::Path(parameter_path) = &parameter.kind else {
             panic!("expected closure parameter path: {parameter:?}");
         };
@@ -5255,8 +5261,11 @@ mod function_body_resolution {
         let hir::ExprKind::Call(callee, _) = &body_expr(closure_function).kind else {
             panic!("expected generated closure call body");
         };
-        let hir::ExprKind::Path(path) = &callee.kind else {
-            panic!("expected captured callable path: {callee:?}");
+        let hir::ExprKind::FieldAccess(environment, field) = &callee.kind else {
+            panic!("expected captured callable field access: {callee:?}");
+        };
+        let hir::ExprKind::Path(path) = &environment.kind else {
+            panic!("expected captured callable environment path: {environment:?}");
         };
         assert!(
             matches!(path.res(), hir::Res::Local(_) | hir::Res::Parameter(_)),
@@ -5267,8 +5276,9 @@ mod function_body_resolution {
                 .iter()
                 .map(|segment| segment.ident.as_str())
                 .collect::<Vec<_>>(),
-            ["f"]
+            ["__env"]
         );
+        assert_eq!(field.as_str(), "f");
     }
 
     #[test]
@@ -5300,8 +5310,11 @@ mod function_body_resolution {
         let hir::ExprKind::FieldAccess(base, field) = &body_expr(closure_function).kind else {
             panic!("expected generated closure field path");
         };
-        let hir::ExprKind::Path(path) = &base.kind else {
-            panic!("expected generated closure field base path: {base:?}");
+        let hir::ExprKind::FieldAccess(environment, capture_field) = &base.kind else {
+            panic!("expected generated closure capture field access: {base:?}");
+        };
+        let hir::ExprKind::Path(path) = &environment.kind else {
+            panic!("expected generated closure environment path: {environment:?}");
         };
         assert!(
             matches!(path.res(), hir::Res::Local(_) | hir::Res::Parameter(_)),
@@ -5312,8 +5325,9 @@ mod function_body_resolution {
                 .iter()
                 .map(|segment| segment.ident.as_str())
                 .collect::<Vec<_>>(),
-            ["__env", "holder"]
+            ["__env"]
         );
+        assert_eq!(capture_field.as_str(), "holder");
         assert_eq!(field.as_str(), "value");
     }
 
@@ -5347,8 +5361,11 @@ mod function_body_resolution {
         let hir::ExprKind::Call(callee, _) = &scrutinee.kind else {
             panic!("expected match scrutinee call: {scrutinee:?}");
         };
-        let hir::ExprKind::Path(path) = &callee.kind else {
-            panic!("expected captured callable path: {callee:?}");
+        let hir::ExprKind::FieldAccess(environment, field) = &callee.kind else {
+            panic!("expected captured callable field access: {callee:?}");
+        };
+        let hir::ExprKind::Path(path) = &environment.kind else {
+            panic!("expected captured callable environment path: {environment:?}");
         };
         assert!(
             matches!(path.res(), hir::Res::Local(_) | hir::Res::Parameter(_)),
@@ -5359,8 +5376,9 @@ mod function_body_resolution {
                 .iter()
                 .map(|segment| segment.ident.as_str())
                 .collect::<Vec<_>>(),
-            ["f"]
+            ["__env"]
         );
+        assert_eq!(field.as_str(), "f");
     }
 
     #[test]
