@@ -4265,7 +4265,7 @@ impl HirTypeChecker {
                 }
             }
         }
-        if let hir::Res::Local(ref local) = path.res {
+        if let hir::Res::Local(ref local) | hir::Res::Parameter(ref local) = path.res {
             if let Some(ty) = self.program_rc().pat_type(local.clone()) {
                 return Ok(ty);
             }
