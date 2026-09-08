@@ -1045,7 +1045,7 @@ impl HirTypeChecker {
     async fn check_body(&mut self, body: &hir::Body) -> Result<Ty> {
         let mut scope = self.with_fresh_block_scope();
         for param in &body.params {
-            let ty = scope.check_type_expr(&param.ty).await?;
+            let ty = scope.parameter_ty(param).await?;
             scope.bind_pattern(&param.pat, ty).await?;
         }
         match scope.expected_expr_type.clone() {
@@ -1065,7 +1065,7 @@ impl HirTypeChecker {
     ) -> Result<()> {
         let mut scope = self.with_fresh_block_scope();
         for param in params {
-            let ty = scope.check_type_expr(&param.ty).await?;
+            let ty = scope.parameter_ty(param).await?;
             scope.bind_pattern(&param.pat, ty).await?;
         }
         // Same expected-type hint `ConstBlock`/`Assign` already provide:
@@ -1090,6 +1090,21 @@ impl HirTypeChecker {
             }
         }
         Ok(())
+    }
+
+    async fn parameter_ty(&mut self, param: &hir::Param) -> Result<Ty> {
+        let mut ty = self.check_type_expr(&param.ty).await?;
+        // HIR stores reference types without mutability. For the receiver
+        // spelling `&mut self`, lowering preserves the distinction on the
+        // binding pattern; restore it before method calls use the bound
+        // receiver so `&mut self` methods remain callable.
+        if let hir::PatKind::Binding { name, mutable: true } = &param.pat.kind
+            && name.as_str() == "self"
+            && let TyKind::Ref(region, inner, _) = ty.kind
+        {
+            ty.kind = TyKind::Ref(region, inner, ty::Mutability::Mut);
+        }
+        Ok(ty)
     }
 
     fn check_expr<'a>(&'a mut self, expr: &'a hir::Expr) -> crate::BoxFuture<'a, Result<Ty>> {
@@ -2514,13 +2529,13 @@ impl HirTypeChecker {
                     self.check_expr(&arg.value).await
                 }?;
                 let actual =
-                    if matches!(arg.value.kind, hir::ExprKind::Literal(hir::Lit::Integer(_)))
+                    if matches!(actual.kind, TyKind::Int(_) | TyKind::Uint(_))
                         && matches!(
                             param_hint.as_ref().map(|hint| &hint.kind),
                             Some(TyKind::Int(_) | TyKind::Uint(_))
                         )
                     {
-                        param_hint.expect("integer literal requires a parameter type")
+                        param_hint.expect("integer argument requires a parameter type")
                     } else {
                         actual
                     };
@@ -2545,7 +2560,7 @@ impl HirTypeChecker {
             // emit a cascading "method not found" error for an `Error`
             // receiver (the bignum `carrying_add` calls commonly reach this
             // path after a lossy iterator expression has already failed).
-            if ty_contains_error(&receiver_ty) {
+            if arg_types.iter().any(ty_contains_error) {
                 return Ok(receiver_ty);
             }
             match self
@@ -5946,14 +5961,16 @@ impl HirTypeChecker {
                         kind => Ty { kind },
                     };
                     let method_actuals = scope.method_call_actuals(&signature, actuals);
-                    let Some((mut substitutions, mut result)) = scope
-                        .instantiate_call_with_explicit_args(
-                            &signature,
-                            &method_actuals,
-                            Some(&function.sig.generics),
-                            explicit_generic_args,
-                        )?
-                    else {
+                    let instantiated = scope.instantiate_call_with_explicit_args(
+                        &signature,
+                        &method_actuals,
+                        Some(&function.sig.generics),
+                        explicit_generic_args,
+                    )?;
+                    if method.as_str() == "mul_small" {
+                        eprintln!("mul_small instantiated={:?}", instantiated);
+                    }
+                    let Some((mut substitutions, mut result)) = instantiated else {
                         continue;
                     };
                     if let Some(expected) = &self.expected_expr_type {
