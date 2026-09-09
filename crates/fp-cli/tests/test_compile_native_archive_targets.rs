@@ -80,7 +80,7 @@ async fn compile_native_archive_transpiles_x86_64_elf_to_aarch64_macho_members()
         output_file.clone(),
         "aarch64-apple-darwin",
     );
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let out_bytes = fs::read(&output_file).unwrap();
     let archive = ArchiveFile::parse(out_bytes.as_slice()).unwrap();

@@ -59,7 +59,7 @@ async fn compile_native_object_roundtrips_simple_x86_64_elf_add_ret_text() {
         output_file.clone(),
         "x86_64-unknown-linux-gnu",
     );
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let output_bytes = fs::read(&output_file).unwrap();
     let input_obj = object::File::parse(input_bytes.as_slice()).unwrap();
@@ -98,7 +98,7 @@ async fn compile_respects_explicit_output_extension_for_native_object_link() {
     fs::write(&input_file, build_x86_64_elf_object_with_call_reloc()).unwrap();
     let mut args = base_args(input_file, output_file.clone(), "aarch64-apple-darwin");
     args.link = true;
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     assert!(output_file.exists());
     assert!(!unexpected_out.exists());
@@ -113,7 +113,7 @@ async fn compile_native_object_link_writes_executable_without_running() {
     fs::write(&input_file, build_x86_64_elf_object_with_call_reloc()).unwrap();
     let mut args = base_args(input_file, output_file.clone(), "aarch64-apple-darwin");
     args.link = true;
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let file = object::File::parse(bytes.as_slice()).unwrap();
@@ -153,7 +153,7 @@ async fn compile_native_object_roundtrips_simple_x86_64_elf_text() {
         output_file.clone(),
         "x86_64-unknown-linux-gnu",
     );
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let output_bytes = fs::read(&output_file).unwrap();
     let input_obj = object::File::parse(input_bytes.as_slice()).unwrap();
@@ -222,7 +222,7 @@ async fn compile_native_object_roundtrips_simple_aarch64_macho_text() {
         output_file.clone(),
         "aarch64-apple-darwin",
     );
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let output_bytes = fs::read(&output_file).unwrap();
     let input_obj = object::File::parse(input_bytes.as_slice()).unwrap();
@@ -257,7 +257,7 @@ async fn compile_native_object_roundtrips_simple_aarch64_macho_add_ret_text() {
         output_file.clone(),
         "aarch64-apple-darwin",
     );
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let output_bytes = fs::read(&output_file).unwrap();
     let input_obj = object::File::parse(input_bytes.as_slice()).unwrap();
@@ -286,7 +286,7 @@ async fn compile_detects_native_object_without_extension() {
 
     fs::write(&input_file, build_x86_64_elf_object_with_rip_store_reloc()).unwrap();
     let args = base_args(input_file, output_file.clone(), "aarch64-apple-darwin");
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let file = object::File::parse(bytes.as_slice()).unwrap();
@@ -348,7 +348,7 @@ async fn compile_native_object_preserves_rip_relative_store_reloc_x86_64_to_aarc
 
     fs::write(&input_file, build_x86_64_elf_object_with_rip_store_reloc()).unwrap();
     let args = base_args(input_file, output_file.clone(), "aarch64-apple-darwin");
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let file = object::File::parse(bytes.as_slice()).unwrap();
@@ -415,7 +415,7 @@ async fn compile_native_object_preserves_rip_relative_load_reloc_x86_64_to_aarch
 
     fs::write(&input_file, build_x86_64_elf_object_with_rip_load_reloc()).unwrap();
     let args = base_args(input_file, output_file.clone(), "aarch64-apple-darwin");
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let file = object::File::parse(bytes.as_slice()).unwrap();
@@ -483,7 +483,7 @@ async fn compile_native_object_preserves_data_relocations_x86_64_to_aarch64() {
 
     fs::write(&input_file, build_x86_64_elf_object_with_data_reloc()).unwrap();
     let args = base_args(input_file, output_file.clone(), "aarch64-apple-darwin");
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let file = object::File::parse(bytes.as_slice()).unwrap();
@@ -577,7 +577,7 @@ async fn compile_native_object_preserves_data_relocations_aarch64_to_x86_64() {
 
     fs::write(&input_file, build_aarch64_macho_object_with_adrp_reloc()).unwrap();
     let args = base_args(input_file, output_file.clone(), "x86_64-unknown-linux-gnu");
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let file = object::File::parse(bytes.as_slice()).unwrap();
@@ -637,7 +637,7 @@ async fn compile_native_object_preserves_call_relocations_aarch64_to_x86_64() {
 
     fs::write(&input_file, build_aarch64_macho_object_with_call_reloc()).unwrap();
     let args = base_args(input_file, output_file.clone(), "x86_64-unknown-linux-gnu");
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let file = object::File::parse(bytes.as_slice()).unwrap();
@@ -788,7 +788,7 @@ async fn compile_native_object_preserves_call_relocations_x86_64_to_aarch64() {
 
     fs::write(&input_file, build_x86_64_elf_object_with_call_reloc()).unwrap();
     let args = base_args(input_file, output_file.clone(), "aarch64-apple-darwin");
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let file = object::File::parse(bytes.as_slice()).unwrap();
@@ -809,7 +809,7 @@ async fn compile_native_object_transpiles_x86_64_elf_to_aarch64_macho() {
 
     fs::write(&input_file, build_minimal_x86_64_elf_object()).unwrap();
     let args = base_args(input_file, output_file.clone(), "aarch64-apple-darwin");
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let file = object::File::parse(bytes.as_slice()).unwrap();
@@ -867,7 +867,7 @@ async fn compile_native_object_transpiles_aarch64_macho_to_x86_64_elf() {
 
     fs::write(&input_file, build_minimal_aarch64_macho_object()).unwrap();
     let args = base_args(input_file, output_file.clone(), "x86_64-unknown-linux-gnu");
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let file = object::File::parse(bytes.as_slice()).unwrap();

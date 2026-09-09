@@ -444,12 +444,8 @@ impl<'a> BashRenderer<'a> {
                         "bash renderer only supports function invocation targets".to_string()
                     );
                 };
-                let Some(ident) = name.as_ident() else {
-                    return Err(
-                        "bash renderer only supports identifier invocation targets".to_string()
-                    );
-                };
-                self.render_invoke_statement(ident.as_str(), &invoke.args, indent)
+                let ident = invoke_name(name);
+                self.render_invoke_statement(&ident, &invoke.args, indent)
             }
             _ => Ok(()),
         }
@@ -501,12 +497,8 @@ impl<'a> BashRenderer<'a> {
                         "bash renderer only supports function invocation targets".to_string()
                     );
                 };
-                let Some(ident) = name.as_ident() else {
-                    return Err(
-                        "bash renderer only supports identifier invocation targets".to_string()
-                    );
-                };
-                self.render_invoke_statement(ident.as_str(), &invoke.args, indent)
+                let ident = invoke_name(name);
+                self.render_invoke_statement(&ident, &invoke.args, indent)
             }
             _ => {
                 self.push_line(
@@ -566,10 +558,8 @@ impl<'a> BashRenderer<'a> {
                         "bash condition only supports function invocation targets".to_string()
                     );
                 };
-                let ident = name.as_ident().ok_or_else(|| {
-                    "bash condition only supports identifier invocation targets".to_string()
-                })?;
-                self.render_call(ident.as_str(), &invoke.args)
+                let ident = invoke_name(name);
+                self.render_call(&ident, &invoke.args)
             }
             ExprKind::Paren(paren) => self.render_condition(&paren.expr),
             ExprKind::UnOp(un_op) if un_op.op == UnOpKind::Not => {
@@ -640,12 +630,10 @@ impl<'a> BashRenderer<'a> {
                         "bash int expression only supports function invocation targets".to_string(),
                     );
                 };
-                let ident = name.as_ident().ok_or_else(|| {
-                    "bash int expression only supports identifier invocation targets".to_string()
-                })?;
+                let ident = invoke_name(name);
                 Ok(format!(
                     "$({})",
-                    self.render_call(ident.as_str(), &invoke.args)?
+                    self.render_call(&ident, &invoke.args)?
                 ))
             }
             _ => Err("expected int expression".to_string()),
@@ -680,7 +668,7 @@ impl<'a> BashRenderer<'a> {
                 ..
             } => {
                 let name = invoke_function_name(invoke)?;
-                Ok(format!("\"$({})\"", self.render_call(name, &invoke.args)?))
+                Ok(format!("\"$({})\"", self.render_call(&name, &invoke.args)?))
             }
             Expr {
                 kind: ExprKind::FormatString(template),
@@ -760,7 +748,7 @@ impl<'a> BashRenderer<'a> {
                 ..
             } => {
                 let name = invoke_function_name(invoke)?;
-                Ok(format!("$({})", self.render_call(name, &invoke.args)?))
+                Ok(format!("$({})", self.render_call(&name, &invoke.args)?))
             }
             Expr {
                 kind: ExprKind::FormatString(template),
@@ -919,7 +907,7 @@ impl<'a> BashRenderer<'a> {
             }
             ExprKind::Invoke(invoke) => {
                 let name = invoke_function_name(invoke)?;
-                Ok(format!("$({})", self.render_call(name, &invoke.args)?))
+                Ok(format!("$({})", self.render_call(&name, &invoke.args)?))
             }
             ExprKind::FormatString(template) => self.render_format_template_command(template),
             ExprKind::IntrinsicCall(call) if call.kind == CallKind::Format => {
@@ -946,7 +934,7 @@ impl<'a> BashRenderer<'a> {
             }
             ExprKind::Invoke(invoke) => {
                 let name = invoke_function_name(invoke)?;
-                Ok(format!("$({})", self.render_call(name, &invoke.args)?))
+                Ok(format!("$({})", self.render_call(&name, &invoke.args)?))
             }
             ExprKind::FormatString(template) => self.render_format_template_command(template),
             ExprKind::IntrinsicCall(call) if call.kind == CallKind::Format => {
@@ -1355,14 +1343,29 @@ fn string_literal_value(expr: &Expr) -> Option<String> {
     }
 }
 
-fn invoke_function_name<'a>(invoke: &'a fp_core::ast::ExprInvoke) -> Result<&'a str, String> {
+fn invoke_function_name(invoke: &fp_core::ast::ExprInvoke) -> Result<String, String> {
     let ExprInvokeTarget::Function(name) = &invoke.target else {
         return Err("bash renderer only supports function invocation targets".to_string());
     };
-    let Some(ident) = name.as_ident() else {
-        return Err("bash renderer only supports identifier invocation targets".to_string());
-    };
-    Ok(ident.as_str())
+    Ok(invoke_name(name))
+}
+
+fn invoke_name(name: &Name) -> String {
+    let parsed = name.to_path();
+    let path = parsed
+        .segments
+        .iter()
+        .map(|segment| segment.as_str())
+        .collect::<Vec<_>>();
+    if path.len() == 1 {
+        return path[0].to_string();
+    }
+    let mut output = String::from("__fp_");
+    for segment in path {
+        output.push_str(segment);
+        output.push('_');
+    }
+    output
 }
 
 fn is_true_expr(expr: Option<&Expr>) -> bool {

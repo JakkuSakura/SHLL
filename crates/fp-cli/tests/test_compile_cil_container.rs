@@ -51,6 +51,7 @@ fn minimal_cil_program() -> &'static str {
 }
 
 #[tokio::test]
+#[cfg(feature = "lang-cil")]
 async fn compile_cil_text_to_dotnet_assembly() {
     let temp_dir = TempDir::new().unwrap();
     let input_file = temp_dir.path().join("main.il");
@@ -58,7 +59,7 @@ async fn compile_cil_text_to_dotnet_assembly() {
     fs::write(&input_file, minimal_cil_program()).unwrap();
 
     let args = base_args(input_file, output_file.clone(), "dotnet");
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert!(bytes.starts_with(b"MZ"));

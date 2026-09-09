@@ -42,7 +42,7 @@ async fn compile_jvm_classfile_roundtrips() {
     fs::write(&input_file, &bytes).unwrap();
 
     let args = base_args(input_file, output_file.clone());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let out = fs::read(&output_file).unwrap();
     assert_eq!(out, bytes);

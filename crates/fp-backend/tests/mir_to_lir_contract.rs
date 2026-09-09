@@ -455,7 +455,7 @@ fn rejects_unsupported_intrinsic_assignment() {
         kind: mir::StatementKind::Assign(
             mir::Place::from_local(0),
             mir::Rvalue::IntrinsicCall {
-                kind: fp_core::intrinsics::IntrinsicKind::Len,
+                kind: fp_core::intrinsics::IntrinsicKind::DebugAssertions,
                 format: String::new(),
                 args: Vec::new(),
             },
@@ -500,7 +500,7 @@ fn rejects_unsupported_intrinsic_assignment() {
         .expect_err("lowering should reject unsupported intrinsic assignments");
     let message = err.to_string();
     assert!(
-        message.contains("unsupported intrinsic in assignment: Len"),
+        message.contains("unsupported intrinsic in assignment: DebugAssertions"),
         "unexpected error: {message}"
     );
 }

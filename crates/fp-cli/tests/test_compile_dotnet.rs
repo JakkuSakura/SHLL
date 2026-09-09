@@ -65,7 +65,7 @@ fn main() -> i64 {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 }
 
 #[tokio::test]
@@ -114,6 +114,6 @@ fn main() -> i64 {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
     assert!(output_file.exists());
 }

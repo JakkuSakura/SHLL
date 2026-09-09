@@ -802,7 +802,7 @@ fn lowers_function_local_const_before_its_declaration_without_a_global() {
                 },
                 hir::Stmt {
                     hir_id: hid(49),
-                    kind: hir::StmtKind::Item(local_const),
+                    kind: hir::StmtKind::Item(local_const.clone()),
                 },
             ],
             expr: Some(Box::new(literal_expr(50, 0))),
@@ -810,13 +810,16 @@ fn lowers_function_local_const_before_its_declaration_without_a_global() {
         false,
         false,
     );
-    let program = program_with_items(vec![Item {
+    let mut program = program_with_items(vec![Item {
         hir_id: hid(51),
         def_id: def_id(44),
         visibility: Visibility::Public,
         kind: ItemKind::Function(function),
         span: span(),
     }]);
+    program
+        .def_map
+        .insert(local_const.def_id.clone(), local_const);
 
     let (_, result) = transform(program);
     let mir_program = result.expect("HIR-to-MIR lowering should succeed");

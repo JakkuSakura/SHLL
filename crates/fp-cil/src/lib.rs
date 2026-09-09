@@ -45,7 +45,6 @@ impl fp_core::backend::TargetBackend for CilBackend {
         fp_core::capabilities::LanguageCapabilities::NATIVE
     }
 
-
     fn exec(&self) -> fp_core::error::Result<()> {
         if !self.assemble {
             return Err(fp_core::error::Error::from(
@@ -90,10 +89,9 @@ impl fp_core::backend::TargetBackend for CilBackend {
         }
         Ok(())
     }
-
+}
 
 impl CilBackend {
-
     fn emit_package(
         &self,
         workspace: &fp_core::ast::program::AstProgram,
@@ -137,7 +135,6 @@ impl CilBackend {
         std::fs::write(&self.output, code)?;
         Ok(())
     }
-}
 }
 
 impl CilBackend {

@@ -234,10 +234,7 @@ impl fp_core::backend::TargetBackend for JavaScriptBackend {
     }
 }
 
-
-
 impl JavaScriptBackend {
-
     fn emit_package(
         &self,
         workspace: &fp_core::ast::program::AstProgram,

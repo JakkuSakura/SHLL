@@ -5,6 +5,7 @@ use fp_cli::commands::compile::{CompileArgs, compile_command};
 use tempfile::TempDir;
 
 #[tokio::test]
+#[cfg(feature = "lang-cil")]
 async fn test_compile_cil_emits_text_artifact() {
     let temp_dir = TempDir::new().unwrap();
     let input_file = temp_dir.path().join("test.fp");
@@ -50,7 +51,7 @@ fn main() -> i64 {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let rendered = fs::read_to_string(&output_file).unwrap();
     assert!(rendered.contains("FerroPhase .NET backend"));

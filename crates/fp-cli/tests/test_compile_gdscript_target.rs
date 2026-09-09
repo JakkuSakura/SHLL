@@ -34,6 +34,7 @@ fn base_compile_args(input: std::path::PathBuf, output: std::path::PathBuf) -> C
 }
 
 #[tokio::test]
+#[cfg(feature = "lang-godot")]
 async fn test_compile_target_gdscript_with_struct() {
     let temp_dir = TempDir::new().unwrap();
     let input_file = temp_dir.path().join("test.fp");
@@ -57,7 +58,7 @@ fn main() {
     args.target = "gdscript".to_string();
 
     let config = CliConfig::default();
-    if let Err(err) = compile_command(args, &config).await {
+    if let Err(err) = compile_command(args, &config) {
         panic!("GDScript target should succeed: {err}");
     }
 

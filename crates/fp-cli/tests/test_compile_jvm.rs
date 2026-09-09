@@ -48,7 +48,7 @@ fn main() -> i32 {
     .unwrap();
 
     let args = base_args(input_file, output_file.clone());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert_eq!(&bytes[0..4], &[0xCA, 0xFE, 0xBA, 0xBE]);
@@ -72,7 +72,7 @@ fn main() -> i32 {
 
     let mut args = base_args(input_file, output_file.clone());
     args.save_intermediates = true;
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let jar_bytes = fs::read(&output_file).unwrap();
     assert_eq!(&jar_bytes[0..4], b"PK\x03\x04");

@@ -629,7 +629,7 @@ fn parse_prefix_no_struct(input: &mut &[Token], file: FileId) -> ModalResult<Exp
         parse_postfix_suffix(input, file)
     })
     .parse_next(input)?;
-    Ok(apply_postfixes(base, suffixes))
+    apply_postfixes(base, suffixes)
 }
 
 fn parse_postfix(input: &mut &[Token], file: FileId) -> ModalResult<Expr> {
@@ -638,7 +638,7 @@ fn parse_postfix(input: &mut &[Token], file: FileId) -> ModalResult<Expr> {
         parse_postfix_suffix(input, file)
     })
     .parse_next(input)?;
-    let expr = apply_postfixes(base, suffixes);
+    let expr = apply_postfixes(base, suffixes)?;
     parse_struct_literal_after_expr(input, file, expr)
 }
 
@@ -648,7 +648,7 @@ fn parse_keyword_name_expr_no_struct(input: &mut &[Token], file: FileId) -> Moda
         parse_postfix_suffix(input, file)
     })
     .parse_next(input)?;
-    Ok(apply_postfixes(base, suffixes))
+    apply_postfixes(base, suffixes)
 }
 
 fn parse_postfix_suffix(input: &mut &[Token], file: FileId) -> ModalResult<Postfix> {
@@ -953,8 +953,15 @@ pub(crate) fn parse_number(input: &mut &[Token]) -> ModalResult<Expr> {
     let (value, ty) = parse_numeric_literal_local(&token.lexeme)
         .map_err(|_| ErrMode::Cut(ContextError::new()))?;
     let node = Expr::value(value).with_span(token_span_to_span(&token));
-    let _ = ty;
-    Ok(node)
+    match ty {
+        Some(ty) => Ok(ExprKind::Cast(ExprCast {
+            span: token_span_to_span(&token),
+            expr: Box::new(node),
+            ty,
+        })
+        .into()),
+        None => Ok(node),
+    }
 }
 
 pub(crate) fn parse_string(input: &mut &[Token], file: FileId) -> ModalResult<Expr> {
@@ -1064,19 +1071,15 @@ pub(crate) fn parse_name_expr(input: &mut &[Token]) -> ModalResult<Expr> {
 enum Postfix {
     Try,
     Field(Ident),
-    /// A `::name` postfix (`parse_scope_field_suffix`) — syntactically the
-    /// same "select a name off the preceding expression" shape as `.name`,
-    /// but semantically a *path* continuation (`u8::MAX`, `Map::new`), never
-    /// a runtime field access. Kept distinct from `Field` from parsing
-    /// onward so `apply_postfixes`/AST-to-HIR lowering can tell them apart
-    /// instead of only being able to distinguish them once resolved.
+    /// A `::name` postfix (`parse_scope_field_suffix`). It extends an
+    /// ordinary path and must never become runtime field access.
     ConstField(Ident),
     Turbofish(GenericArgs),
     Call(Vec<Expr>, Vec<ExprKwArg>),
     Index(Expr),
 }
 
-fn apply_postfixes(mut expr: Expr, suffixes: Vec<Postfix>) -> Expr {
+fn apply_postfixes(mut expr: Expr, suffixes: Vec<Postfix>) -> ModalResult<Expr> {
     for suffix in suffixes {
         expr = match suffix {
             Postfix::Try => ExprKind::Try(ExprTry {
@@ -1102,13 +1105,7 @@ fn apply_postfixes(mut expr: Expr, suffixes: Vec<Postfix>) -> Expr {
                         name.path.segments.push(field.into());
                         Expr::new(ExprKind::Name(name)).with_span(span)
                     }
-                    _ => ExprKind::FieldAccess(ExprFieldAccess {
-                        span,
-                        obj: Box::new(expr),
-                        field,
-                        generic_args: None,
-                    })
-                    .into(),
+                    _ => return Err(ErrMode::Cut(ContextError::new())),
                 }
             }
             Postfix::Turbofish(args) => match expr.kind {
@@ -1134,7 +1131,7 @@ fn apply_postfixes(mut expr: Expr, suffixes: Vec<Postfix>) -> Expr {
             .into(),
         };
     }
-    expr
+    Ok(expr)
 }
 
 fn parse_struct_literal_after_expr(
@@ -1479,7 +1476,7 @@ pub(crate) fn parse_block_stmt_entry(input: &mut &[Token], file: FileId) -> Moda
                 parse_postfix_suffix(input, file)
             })
             .parse_next(input)?;
-            let postfixed = apply_postfixes(block_expr, suffixes);
+            let postfixed = apply_postfixes(block_expr, suffixes)?;
             // The postfix chain may itself be an assignment target (real
             // `std::sys::pal::sgx::waitqueue::unsafe_list`'s own `unsafe {
             // self.head_tail.as_mut() }.next = self.head_tail;`) — give it

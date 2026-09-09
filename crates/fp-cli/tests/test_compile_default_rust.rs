@@ -45,7 +45,7 @@ fn main() {
     };
 
     let config = CliConfig::default();
-    let result = compile_command(args, &config).await;
+    let result = compile_command(args, &config);
     assert!(result.is_ok(), "Rust backend compilation should succeed");
 
     assert!(output_file.exists(), "Output file should be created");

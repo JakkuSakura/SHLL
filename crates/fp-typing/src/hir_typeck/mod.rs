@@ -1641,10 +1641,13 @@ impl HirTypeChecker {
                     .with_expected_expr_type(Ty::uint(ty::UintTy::Usize))
                     .check_expr(index)
                     .await?;
-                let receiver_ty = match &receiver_ty.kind {
-                    TyKind::Ref(_, inner, _) => inner.as_ref(),
-                    _ => &receiver_ty,
-                };
+                let mut receiver_ty = &receiver_ty;
+                while let TyKind::Ref(_, inner, _) = &receiver_ty.kind {
+                    receiver_ty = inner;
+                }
+                if ty_contains_error(receiver_ty) {
+                    return Ok(receiver_ty.clone());
+                }
                 let ty = match &receiver_ty.kind {
                     TyKind::Array(inner, _) | TyKind::Slice(inner) => {
                         // Integer locals default to `i64` here, while rustc
@@ -2249,10 +2252,13 @@ impl HirTypeChecker {
                 if let Some(end) = &slice.end {
                     self.check_expr(end).await?;
                 }
-                let base_ty = match &base_ty.kind {
-                    TyKind::Ref(_, inner, _) => inner.as_ref(),
-                    _ => &base_ty,
-                };
+                let mut base_ty = &base_ty;
+                while let TyKind::Ref(_, inner, _) = &base_ty.kind {
+                    base_ty = inner;
+                }
+                if ty_contains_error(base_ty) {
+                    return Ok(base_ty.clone());
+                }
                 Ok::<_, fp_core::error::Error>(match &base_ty.kind {
                     TyKind::Array(inner, _) => Ty {
                         kind: TyKind::Slice(inner.clone()),
@@ -2348,6 +2354,8 @@ impl HirTypeChecker {
         span: fp_core::span::Span,
     ) -> crate::BoxFuture<'a, Result<Ty>> {
         Box::pin(async move {
+            let lhs_expr = lhs;
+            let rhs_expr = rhs;
             let lhs_literal = matches!(lhs.kind, hir::ExprKind::Literal(hir::Lit::Integer(_)));
             let rhs_literal = matches!(rhs.kind, hir::ExprKind::Literal(hir::Lit::Integer(_)));
             let lhs_float_literal = matches!(lhs.kind, hir::ExprKind::Literal(hir::Lit::Float(_)));
@@ -2392,6 +2400,8 @@ impl HirTypeChecker {
                     self.record_error_with_span("shift operands must be integers", span);
                 }
             } else if !integer_literal && !float_literal {
+                self.refine_integer_local(lhs_expr, &rhs);
+                self.refine_integer_local(rhs_expr, &lhs);
                 match op {
                     hir::BinOp::And | hir::BinOp::Or => {
                         self.require_same_at(&lhs, &Ty::bool(), span)?;
@@ -2569,10 +2579,13 @@ impl HirTypeChecker {
                             Some(TyKind::Int(_) | TyKind::Uint(_))
                         )
                     {
-                        param_hint.expect("integer argument requires a parameter type")
+                        param_hint.clone().expect("integer argument requires a parameter type")
                     } else {
                         actual
                     };
+                if let Some(hint) = param_hint.as_ref() {
+                    self.refine_integer_local(&arg.value, hint);
+                }
                 arg_types.push(actual);
             }
             let formatter_append = method.as_str() == "append"
@@ -3593,7 +3606,15 @@ impl HirTypeChecker {
                     "trait definition `{def_id}` is not a concrete type"
                 )));
             }
-            _ => return Ok(self.error_ty(format!("definition `{def_id}` is not a type"))),
+            _ => {
+                tracing::debug!(
+                    ?def_id,
+                    ?path,
+                    item_kind = ?item.kind,
+                    "type path resolved to a non-type definition"
+                );
+                return Ok(self.error_ty(format!("definition `{def_id}` is not a type")));
+            }
         };
         // Generic arguments belong to their rustc-style path segment.  A
         // nominal type path may have module prefixes, so select the first
@@ -3967,6 +3988,29 @@ impl HirTypeChecker {
         self.program_rc().record_pat_type(local_id.clone(), refined);
     }
 
+    fn refine_integer_local(&mut self, expr: &hir::Expr, expected: &Ty) {
+        if !matches!(expected.kind, TyKind::Int(_) | TyKind::Uint(_)) {
+            return;
+        }
+        let hir::ExprKind::Path(hir::QPath::Resolved(_, path)) = &expr.kind else {
+            return;
+        };
+        let (hir::Res::Local(local_id) | hir::Res::Parameter(local_id)) = path.res_ref() else {
+            return;
+        };
+        let Some(name) = path.segments().last().map(|segment| &segment.ident) else {
+            return;
+        };
+        let Some(current) = self.locals.get(name) else {
+            return;
+        };
+        if !matches!(current.kind, TyKind::Int(_) | TyKind::Uint(_)) {
+            return;
+        }
+        self.locals.insert(name.clone(), expected.clone());
+        self.program_rc().record_pat_type(local_id.clone(), expected.clone());
+    }
+
     /// Finds a real struct definition by name, searching this package first
     /// and then loaded dependency packages — used only for well-known
     /// standard-library collection types that a synthesized function
@@ -4149,22 +4193,41 @@ impl HirTypeChecker {
         // (BuiltinSelfType::Primitive(..))` fallback). The receiver type
         // is simply the primitive itself; resolve the tail the same way
         // `Self::`/struct bases already do.
-        if let hir::Res::Builtin(hir::BuiltinSelfType::Primitive(name)) = &path.res {
-            if let (Some(receiver_ty), Some(tail)) = (primitive_path_ty(name), path.segments.get(1))
+        if path.segments.len() == 2 {
+            let primitive_name = match &path.res {
+                hir::Res::Builtin(hir::BuiltinSelfType::Primitive(name)) => Some(name.as_str()),
+                _ => Some(path.segments[0].ident.as_str()),
+            };
+            if let Some(name) = primitive_name
+                && let Some(receiver_ty) = primitive_path_ty(name)
             {
-                if path.segments.len() == 2 {
-                    if let Some(sig) = self
-                        .method_declared_signature_at(&receiver_ty, &tail.ident)
-                        .await?
-                    {
-                        return Ok(sig);
-                    }
-                    return Ok(self.error_ty(format!(
-                        "no item named `{}` found on primitive `{}`",
-                        tail.ident, name
-                    )));
+                let tail = &path.segments[1];
+                if let Some(sig) = self
+                    .method_declared_signature_at(&receiver_ty, &tail.ident)
+                    .await?
+                {
+                    return Ok(sig);
                 }
+                // The primitive integer modules are compiler-provided in
+                // rustc. Their inherent constants remain available even
+                // when the vendored source does not materialize a concrete
+                // impl item for a particular target-width primitive.
+                if matches!(tail.ident.as_str(), "MIN" | "MAX") {
+                    return Ok(receiver_ty);
+                }
+                if tail.ident == "BITS" {
+                    return Ok(Ty::uint(ty::UintTy::U32));
+                }
+                return Ok(self.error_ty(format!(
+                    "no item named `{}` found on primitive `{}`",
+                    tail.ident, name
+                )));
             }
+        }
+        if matches!(
+            &path.res,
+            hir::Res::Builtin(hir::BuiltinSelfType::Primitive(_))
+        ) {
             // A bare primitive name used standalone as a value (e.g. a
             // macro's own type parameter substituted directly into a
             // generic-argument-as-value position, like real vendored
@@ -4185,7 +4248,14 @@ impl HirTypeChecker {
         // by the lossy HIR lowering. Resolve the alias first, then perform
         // the same associated-item lookup rustc performs after alias
         // normalization.
-        if path.segments.len() == 2 && matches!(path.res, hir::Res::Def(_)) {
+        let path_def_is_type_alias = match path.res_ref() {
+            hir::Res::Def(def_id) => self
+                .program_rc()
+                .item(def_id.clone())
+                .is_some_and(|item| matches!(item.kind, hir::ItemKind::TypeAlias(_))),
+            _ => false,
+        };
+        if path.segments.len() == 2 && path_def_is_type_alias {
             let mut base_path = path.clone();
             base_path.segments.pop();
             let base = hir::QPath::Resolved(None, base_path);
@@ -4229,7 +4299,7 @@ impl HirTypeChecker {
                 }
             }
         }
-        if let hir::Res::Local(ref local) = path.res {
+        if let hir::Res::Local(ref local) | hir::Res::Parameter(ref local) = path.res {
             if let Some(ty) = self.program_rc().pat_type(local.clone()) {
                 return Ok(ty);
             }
@@ -6376,6 +6446,9 @@ impl HirTypeChecker {
                     }
                 }
                 hir::PatKind::Tuple(patterns) => {
+                    if ty_contains_error(&adt_ty) {
+                        return Ok(());
+                    }
                     let TyKind::Tuple(fields) = adt_ty.kind else {
                         self.record_error("tuple pattern requires a tuple scrutinee");
                         return Ok(());
@@ -6422,6 +6495,9 @@ impl HirTypeChecker {
                     }
                 }
                 hir::PatKind::TupleStruct(path, patterns) => {
+                    if ty_contains_error(&adt_ty) {
+                        return Ok(());
+                    }
                     let (_, payloads) = self
                         .variant_payload_types_for_qpath(path, &adt_ty)
                         .await?;
@@ -6458,10 +6534,10 @@ impl HirTypeChecker {
     }
 
     async fn field_ty(&mut self, receiver: &Ty, field: &hir::Symbol) -> Result<Ty> {
-        let receiver = match &receiver.kind {
-            TyKind::Ref(_, inner, _) => inner.as_ref(),
-            _ => receiver,
-        };
+        let mut receiver = receiver;
+        while let TyKind::Ref(_, inner, _) = &receiver.kind {
+            receiver = inner;
+        }
         // A plain (non-`Adt`) tuple type has no struct fields, but its own
         // numeric field-access syntax (`.0`, `.1`, ...) reaches this same
         // `field_ty` call — HIR apparently has no separate "tuple index"
@@ -6630,10 +6706,15 @@ impl HirTypeChecker {
                 {
                     return Some(result);
                 }
-                let hir::Res::Def(enum_id) = resolved.res_ref() else {
+                let item = if let hir::Res::Def(enum_id) = resolved.res_ref() {
+                    self.program_rc().item(enum_id.clone())?
+                } else {
+                    // Lossy lowering can leave an enum variant path with an
+                    // error/module owner. Rustc resolves the final variant
+                    // against the scrutinee's enum type, so recover that
+                    // owner when the path itself is not authoritative.
                     return None;
                 };
-                let item = self.program_rc().item(enum_id.clone())?;
                 let hir::ItemKind::Enum(def) = &item.kind else {
                     return None;
                 };
@@ -6669,7 +6750,19 @@ impl HirTypeChecker {
         path: &hir::QPath,
         scrutinee: &Ty,
     ) -> Result<(Ty, Vec<Ty>)> {
-        let Some((item, variant)) = self.enum_variant_for_qpath(path).await else {
+        let variant_lookup = self.enum_variant_for_qpath(path).await.or_else(|| {
+            let TyKind::Adt(adt, _) = &scrutinee.kind else {
+                return None;
+            };
+            let item = self.program_rc().item(adt.did.clone())?;
+            let hir::ItemKind::Enum(def) = &item.kind else {
+                return None;
+            };
+            let name = path.segments().last()?.ident.clone();
+            let variant = def.variants.iter().find(|variant| variant.name == name)?.clone();
+            Some((item, variant))
+        });
+        let Some((item, variant)) = variant_lookup else {
             return Ok((self.error_ty("variant pattern is unresolved"), Vec::new()));
         };
         let hir::ItemKind::Enum(def) = &item.kind else {

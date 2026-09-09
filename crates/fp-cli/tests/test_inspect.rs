@@ -102,7 +102,6 @@ fn main() {
         base_compile_args(input, bytecode.clone()),
         &CliConfig::default(),
     )
-    .await
     .unwrap();
 
     fp_cmd()
@@ -154,7 +153,6 @@ fn main() -> i32 {
         compile_args_for_target(input, object.clone(), "ebpf"),
         &CliConfig::default(),
     )
-    .await
     .unwrap();
 
     fp_cmd()

@@ -2113,6 +2113,16 @@ fn parse_expr_ast_self_field_access_targets_self_ident() {
 }
 
 #[test]
+fn parse_expr_ast_rejects_scope_suffix_on_non_path_expression() {
+    let parser = FerroPhaseParser::new();
+    parser.clear_diagnostics();
+    assert!(
+        parser.parse_expr_ast("(value)::ITEM").is_err(),
+        "a scope suffix must not be represented as field access"
+    );
+}
+
+#[test]
 fn parse_expr_ast_handles_raw_ref_identifier_binding() {
     let parser = FerroPhaseParser::new();
     parser.clear_diagnostics();

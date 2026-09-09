@@ -48,7 +48,7 @@ fn main() -> i32 {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let rendered = fs::read_to_string(&output_file).unwrap();
     assert!(rendered.contains("FerroPhase eBPF backend"));
@@ -97,7 +97,7 @@ fn main() -> i32 {
         single_world: false,
     };
 
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert_eq!(&bytes[..4], b"\x7FELF");

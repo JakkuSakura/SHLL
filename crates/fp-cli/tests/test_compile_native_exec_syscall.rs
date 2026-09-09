@@ -76,7 +76,7 @@ async fn compile_linux_access_syscall_exec_to_windows_import_call() {
     fs::write(&input_file, build_x86_64_elf_object_with_access_syscall()).unwrap();
     let mut args = base_args(input_file, output_file.clone());
     args.target_triple = Some("x86_64-pc-windows-msvc".to_string());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert!(
@@ -130,7 +130,7 @@ async fn compile_linux_unlink_syscall_exec_to_windows_import_call() {
     fs::write(&input_file, build_x86_64_elf_object_with_unlink_syscall()).unwrap();
     let mut args = base_args(input_file, output_file.clone());
     args.target_triple = Some("x86_64-pc-windows-msvc".to_string());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert!(
@@ -186,7 +186,7 @@ async fn compile_linux_mkdir_syscall_exec_to_windows_import_call() {
     fs::write(&input_file, build_x86_64_elf_object_with_mkdir_syscall()).unwrap();
     let mut args = base_args(input_file, output_file.clone());
     args.target_triple = Some("x86_64-pc-windows-msvc".to_string());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert!(
@@ -242,7 +242,7 @@ async fn compile_linux_rename_syscall_exec_to_windows_import_call() {
     fs::write(&input_file, build_x86_64_elf_object_with_rename_syscall()).unwrap();
     let mut args = base_args(input_file, output_file.clone());
     args.target_triple = Some("x86_64-pc-windows-msvc".to_string());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert!(
@@ -318,7 +318,7 @@ async fn compile_linux_dlopen_call_exec_to_windows_import_call() {
     fs::write(&input_file, build_x86_64_elf_object_with_dlopen_call()).unwrap();
     let mut args = base_args(input_file, output_file.clone());
     args.target_triple = Some("x86_64-pc-windows-msvc".to_string());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let haystack = String::from_utf8_lossy(&bytes).to_ascii_lowercase();
@@ -366,7 +366,7 @@ async fn compile_linux_getpid_syscall_exec_to_windows_import_call() {
     fs::write(&input_file, build_x86_64_elf_object_with_getpid_syscall()).unwrap();
     let mut args = base_args(input_file, output_file.clone());
     args.target_triple = Some("x86_64-pc-windows-msvc".to_string());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert!(
@@ -424,7 +424,7 @@ async fn compile_linux_seek_syscall_exec_to_windows_import_call() {
     fs::write(&input_file, build_x86_64_elf_object_with_seek_syscall()).unwrap();
     let mut args = base_args(input_file, output_file.clone());
     args.target_triple = Some("x86_64-pc-windows-msvc".to_string());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert!(
@@ -488,7 +488,7 @@ async fn compile_linux_mmap_syscall_exec_to_windows_import_call() {
     fs::write(&input_file, build_x86_64_elf_object_with_mmap_syscall()).unwrap();
     let mut args = base_args(input_file, output_file.clone());
     args.target_triple = Some("x86_64-pc-windows-msvc".to_string());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert!(
@@ -546,7 +546,7 @@ async fn compile_linux_open_syscall_exec_to_windows_import_call() {
     fs::write(&input_file, build_x86_64_elf_object_with_open_syscall()).unwrap();
     let mut args = base_args(input_file, output_file.clone());
     args.target_triple = Some("x86_64-pc-windows-msvc".to_string());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert!(
@@ -600,7 +600,7 @@ async fn compile_linux_close_syscall_exec_to_windows_import_call() {
     fs::write(&input_file, build_x86_64_elf_object_with_close_syscall()).unwrap();
     let mut args = base_args(input_file, output_file.clone());
     args.target_triple = Some("x86_64-pc-windows-msvc".to_string());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert!(
@@ -693,7 +693,7 @@ async fn compile_linux_write_syscall_exec_to_windows_import_call() {
     fs::write(&input_file, build_x86_64_elf_object_with_write_syscall()).unwrap();
     let mut args = base_args(input_file, output_file.clone());
     args.target_triple = Some("x86_64-pc-windows-msvc".to_string());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert!(
@@ -721,7 +721,7 @@ async fn compile_linux_read_syscall_exec_to_windows_import_call() {
     fs::write(&input_file, build_x86_64_elf_object_with_read_syscall()).unwrap();
     let mut args = base_args(input_file, output_file.clone());
     args.target_triple = Some("x86_64-pc-windows-msvc".to_string());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert!(
@@ -749,7 +749,7 @@ async fn compile_linux_syscall_exec_to_windows_import_call() {
     fs::write(&input_file, build_x86_64_elf_object_with_exit_syscall()).unwrap();
     let mut args = base_args(input_file, output_file.clone());
     args.target_triple = Some("x86_64-pc-windows-msvc".to_string());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert!(
@@ -779,7 +779,7 @@ async fn compile_windows_import_exec_to_linux_syscall() {
     )
     .unwrap();
     let args = base_args(input_file, output_file.clone());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     assert!(
@@ -875,7 +875,7 @@ async fn compile_native_object_exec_preserves_syscall() {
 
     fs::write(&input_file, build_x86_64_elf_object_with_exit_syscall()).unwrap();
     let args = base_args(input_file, output_file.clone());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let file = object::File::parse(bytes.as_slice()).unwrap();

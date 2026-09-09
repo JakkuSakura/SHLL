@@ -138,7 +138,7 @@ async fn compile_elf_object_calling_system_to_macho_exec_and_lists_files() {
 
     fs::write(&input_file, build_x86_64_elf_object_calls_system_ls()).unwrap();
     let args = base_args(input_file, output_file.clone());
-    compile_command(args, &CliConfig::default()).await.unwrap();
+    compile_command(args, &CliConfig::default()).unwrap();
 
     let bytes = fs::read(&output_file).unwrap();
     let file = object::File::parse(bytes.as_slice()).unwrap();

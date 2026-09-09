@@ -508,7 +508,10 @@ fn repeated_generic_call_parameter_refines_self_binding() {
         kind: TyKind::FnPtr(ty::PolyFnSig {
             binder: ty::Binder {
                 value: ty::FnSig {
-                    inputs: vec![Box::new(parameter_ty.clone()), Box::new(parameter_ty.clone())],
+                    inputs: vec![
+                        Box::new(parameter_ty.clone()),
+                        Box::new(parameter_ty.clone()),
+                    ],
                     output: Box::new(parameter_ty),
                     c_variadic: false,
                     unsafety: ty::Unsafety::Normal,
@@ -772,12 +775,7 @@ fn associated_const_lookup_is_not_filtered_by_expected_value_type() {
     package.def_map.insert(impl_id, implementation);
 
     let executor = fp_core::executor::CompilerExecutor::new().handle();
-    let checker = HirTypeChecker::new(
-        Rc::new(RefCell::new(package)),
-        None,
-        None,
-        executor.clone(),
-    );
+    let checker = HirTypeChecker::new(Rc::new(RefCell::new(package)), None, None, executor.clone());
     let result = executor.run(async move {
         let mut checker = checker.borrow_mut();
         checker.expected_expr_type = Some(Ty::bool());
@@ -1142,7 +1140,11 @@ fn lifetime_arguments_do_not_shift_nominal_type_arguments() {
     else {
         panic!("expected Wrapper<'a, i32> to resolve as an ADT, got {actual:?}");
     };
-    assert_eq!(args.len(), 1, "erased lifetimes must not occupy ADT arg slots");
+    assert_eq!(
+        args.len(),
+        1,
+        "erased lifetimes must not occupy ADT arg slots"
+    );
     assert_eq!(args[0], ty::GenericArg::Type(Ty::int(ty::IntTy::I32)));
 }
 
