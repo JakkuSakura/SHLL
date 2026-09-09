@@ -2553,6 +2553,9 @@ impl KotlinEmitter {
                 }
                 let name = name.replace("::", ".");
                 let bare = name.rsplit('.').next().unwrap_or(&name);
+                if matches!(bare, "Path" | "PathBuf") {
+                    return "java.nio.file.Path".into();
+                }
                 if let ExprKind::Name(Name { path, .. }) = expr.kind() {
                     let segment = path.last();
                     let args = segment

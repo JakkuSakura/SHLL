@@ -616,21 +616,23 @@ fn run_compile_pipeline(
                 .map_err(|error| CliError::Compilation(error.to_string()))?;
         }
     }
-    let (ast_program, hir_program, mir_program, lir_program) = {
+    let (ast_program, hir_program, mir_program, lir_program, source_operations) = {
         let state = driver.state.borrow();
         (
             state.ast_program.clone(),
             state.hir_program(),
             state.mir_program_rc(),
             state.lir_program_rc(),
+            state.source_operations(),
         )
     };
     let context = fp_core::backend::BackendContext {
         ast_program,
         hir_program,
-        mir_program,
-        lir_program,
-        emitted_packages: packages.clone(),
+            mir_program,
+            lir_program,
+            source_operations,
+            emitted_packages: packages.clone(),
     };
     backend
         .emit(&context)

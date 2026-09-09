@@ -346,7 +346,7 @@ impl KotlinEmitter {
                             return Ok("System.getProperty(\"user.dir\")".to_string());
                         }
                         // Rewrite type prefix in function paths like `PathBuf::from` → `Path.of`
-                        let mapped = map_kt_path(&name);
+                        let mapped = map_kt_path(&normalize_qself_path(&name));
                         let args: Vec<String> = inv
                             .args
                             .iter()
@@ -616,12 +616,14 @@ impl KotlinEmitter {
                 self.writer.decrease_indent();
                 let value = value?;
                 let params = params.join(", ");
+                let arrow = if params.is_empty() { "" } else { " ->" };
                 if hoisted.trim().is_empty() {
-                    Ok(format!("{{ {} -> {} }}", params, value))
+                    Ok(format!("{{ {}{} {} }}", params, arrow, value))
                 } else {
                     Ok(format!(
-                        "{{ {} ->\n{}\n{} }}",
+                        "{{ {}{}\n{}\n{} }}",
                         params,
+                        arrow,
                         hoisted.trim_end_matches('\n'),
                         value
                     ))
@@ -829,6 +831,19 @@ pub(super) fn invoke_name(target: &ExprInvokeTarget) -> Result<String> {
             "call target {other:?} is not yet supported in Kotlin output"
         )),
     }
+}
+
+/// Rust type-relative paths can be printed as `<Type>::method`.  The qself
+/// marker is syntactic Rust metadata and must not leak into Kotlin output;
+/// retain the type and method path itself.
+fn normalize_qself_path(name: &str) -> String {
+    let Some(rest) = name.strip_prefix('<') else {
+        return name.to_owned();
+    };
+    let Some(end) = rest.find(">::") else {
+        return name.to_owned();
+    };
+    format!("{}::{}", &rest[..end], &rest[end + 3..])
 }
 
 /// Map a field/function name in a select expression to Kotlin equivalent.

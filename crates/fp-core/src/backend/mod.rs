@@ -42,6 +42,7 @@ pub struct BackendContext {
     pub hir_program: Rc<RefCell<crate::hir::HirProgram>>,
     pub mir_program: Rc<crate::mir::MirProgram>,
     pub lir_program: Rc<crate::lir::LirProgram>,
+    pub source_operations: Option<crate::lang::LangItemRegistry>,
     pub emitted_packages: Vec<PackageId>,
 }
 

@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use fp_core::ast::path::PathPrefix;
+use fp_core::ast::package::AstPackage;
 use fp_core::ast::{
     self, BlockStmt, BlockStmtExpr, Expr, ExprArray, ExprAssign, ExprBinOp, ExprBlock, ExprBreak,
     ExprCast, ExprClosure, ExprContinue, ExprFieldAccess, ExprFor, ExprIf, ExprIndex,
@@ -411,6 +412,7 @@ impl<'a> HirToAstLifter<'a> {
     /// Reconstruct a complete AST module from typed HIR. This is the backend
     /// transpilation boundary: no provider AST is reused or patched.
     pub fn lift_module(&self) -> Result<ast::Module> {
+
         let mut root = ast::Module {
             attrs: Vec::new(),
             name: Ident::new(""),
@@ -418,7 +420,15 @@ impl<'a> HirToAstLifter<'a> {
             visibility: ast::Visibility::Public,
             is_external: false,
         };
-        for item in &self.package.items {
+        // `items` contains only package-root owners; definitions nested in
+        // source modules live in `def_map`. Reconstruct from that complete
+        // semantic table rather than dropping every nested module's types.
+        for item in self.package.def_map.values() {
+            if self.package.placeholder_defs.contains(&item.def_id)
+                && !matches!(item.kind, hir::ItemKind::Trait(_))
+            {
+                continue;
+            }
             let lifted = self.lift_item(item)?;
             let Some(path) = self.source_path_for(&item.def_id) else {
                 root.items.push(lifted);
@@ -429,10 +439,27 @@ impl<'a> HirToAstLifter<'a> {
         Ok(root)
     }
 
+    /// Reconstruct a complete AST package from HIR. Provider/compiler AST is
+    /// used only for package metadata and syntax-only imports; all definitions
+    /// and module structure come from the typed HIR reconstruction above.
+    pub fn lift_package(&self, source: &AstPackage) -> Result<AstPackage> {
+        let imports = collect_imports(&source.module);
+        let mut module = self.lift_module()?;
+        prepend_imports_to_modules(&mut module, &imports);
+        Ok(AstPackage {
+            package_id: source.package_id.clone(),
+            name: source.name.clone(),
+            package: source.package.clone(),
+            prelude_modules: source.prelude_modules.clone(),
+            module,
+            referenced_paths: self.referenced_source_paths(),
+        })
+    }
+
     /// Legacy per-definition lifting helpers retained for focused tests.
     pub fn lift_items_by_def_id(&self) -> HashMap<hir::DefId, Item> {
         let mut lifted = Vec::new();
-        for item in &self.package.items {
+        for item in self.package.def_map.values() {
             // Synthetic HIR definitions have no corresponding source item to
             // splice back into. Traits are no longer placeholders: lifting
             // their typed method signatures keeps interface suspension in
@@ -517,7 +544,6 @@ impl<'a> HirToAstLifter<'a> {
             let referenced = work
                 .into_iter()
                 .filter(|def_id| *def_id != item.def_id)
-                .filter(|def_id| self.package.def_map.contains_key(def_id))
                 .collect::<Vec<_>>();
             result.insert(item.def_id.clone(), referenced);
         }
@@ -608,7 +634,7 @@ impl<'a> HirToAstLifter<'a> {
                 ty: Some(self.lift_type(&def.ty)?),
                 value: Box::new(self.lift_body_value(&def.body.value)?),
             })),
-            hir::ItemKind::Impl(_) => Item::from(ItemKind::Expr(ast::Expr::unit())),
+            hir::ItemKind::Impl(impl_def) => self.lift_impl_item(item, impl_def)?,
             hir::ItemKind::Trait(def) => self.lift_trait_item(item, def)?,
             hir::ItemKind::Query(query) => {
                 return Err(fp_core::error::Error::Generic(eyre::eyre!(
@@ -725,6 +751,46 @@ impl<'a> HirToAstLifter<'a> {
             visibility: lift_visibility(&item.visibility),
         }))
         .with_span(item.span))
+    }
+
+    fn lift_impl_item(&self, item: &hir::Item, impl_def: &hir::Impl) -> Result<Item> {
+        let self_ty = match self.lift_type(&impl_def.self_ty)? {
+            Ty::Expr(expr) => expr,
+            _ => Box::new(Expr::unit()),
+        };
+        let trait_ty = impl_def
+            .trait_ty
+            .as_ref()
+            .and_then(|ty| match self.lift_type(ty).ok()? {
+                Ty::Expr(expr) => match expr.kind() {
+                    ast::ExprKind::Name(name) => Some(name.clone()),
+                    _ => None,
+                },
+                _ => None,
+            });
+        let mut items = Vec::new();
+        for impl_item in &impl_def.items {
+            let synthetic = hir::Item {
+                hir_id: impl_item.hir_id.clone(),
+                def_id: impl_item.def_id.clone(),
+                visibility: item.visibility.clone(),
+                kind: match &impl_item.kind {
+                    hir::ImplItemKind::Method(function) => hir::ItemKind::Function(function.clone()),
+                    hir::ImplItemKind::AssocConst(constant) => hir::ItemKind::Const(constant.clone()),
+                    hir::ImplItemKind::AssocType(_) => continue,
+                },
+                span: item.span,
+            };
+            items.push(self.lift_item(&synthetic)?);
+        }
+        Ok(Item::from(ItemKind::Impl(ast::ItemImpl {
+            attrs: Vec::new(),
+            is_negative: false,
+            trait_ty,
+            self_ty: *self_ty,
+            generics_params: Vec::new(),
+            items,
+        })).with_span(item.span))
     }
 
     fn lift_signature(&self, sig: &hir::FunctionSig) -> Result<FunctionSignature> {
@@ -2378,6 +2444,42 @@ fn insert_lifted_item(module: &mut ast::Module, path: &[String], item: Item) {
     };
     insert_lifted_item(&mut child, tail, item);
     module.items.push(Item::new(ast::ItemKind::Module(child)));
+}
+
+fn collect_imports(module: &ast::Module) -> Vec<ast::Item> {
+    fn visit(module: &ast::Module, imports: &mut Vec<ast::Item>) {
+        for item in &module.items {
+            match item.kind() {
+                ast::ItemKind::Import(_) => imports.push(item.clone()),
+                ast::ItemKind::Module(child) => visit(child, imports),
+                _ => {}
+            }
+        }
+    }
+    let mut imports = Vec::new();
+    visit(module, &mut imports);
+    imports
+}
+
+fn prepend_imports_to_modules(module: &mut ast::Module, imports: &[ast::Item]) {
+    let mut existing = Vec::new();
+    module.items.retain(|item| {
+        if matches!(item.kind(), ast::ItemKind::Import(_)) {
+            existing.push(item.clone());
+            false
+        } else {
+            true
+        }
+    });
+    let mut all = imports.to_vec();
+    all.extend(existing);
+    all.extend(module.items.drain(..));
+    module.items = all;
+    for item in &mut module.items {
+        if let ast::ItemKind::Module(child) = item.kind_mut() {
+            prepend_imports_to_modules(child, imports);
+        }
+    }
 }
 
 fn block_assigns_local(block: &hir::Block, target: hir::HirId) -> bool {

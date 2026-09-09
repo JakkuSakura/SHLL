@@ -50,13 +50,15 @@ impl KotlinMaterializer {
         match call.op.name() {
             "default" => Ok(kotlin_default_value(ty)),
             "from_str" | "str_parse" => Ok(Some(runtime_method("parse", vec![receiver()]))),
-            "option_some" | "as_ref" | "iter" | "as_str" | "as_deref" => Ok(Some(receiver())),
+            "option_some" | "Option.some" | "as_ref" | "iter" | "as_str" | "as_deref" => {
+                Ok(Some(receiver()))
+            }
             // Kotlin strings and paths are immutable values, but arrays and mutable
             // lists must still receive a real copy. Keeping this here prevents the
             // generic serializer fallback from emitting Rust's `clone` or Kotlin's
             // data-class-only `copy()` for standard-library collection values.
             "clone" | "to_owned" => Ok(Some(kotlin_owned_value(receiver(), ty))),
-            "option_none" => Ok(Some(Expr::value(Value::Null(Default::default())))),
+            "option_none" | "Option.none" => Ok(Some(Expr::value(Value::Null(Default::default())))),
             "option_unwrap" => Ok(Some(runtime_method("optionUnwrap", vec![receiver()]))),
             "option_take" => Ok(Some(receiver())),
             "option_filter" => Ok(Some(invoke_method(
@@ -64,11 +66,11 @@ impl KotlinMaterializer {
                 "takeIf",
                 portable_op_args_after_receiver(call),
             ))),
-            "result_ok" => Ok(Some(runtime_method(
+            "result_ok" | "Result.ok" => Ok(Some(runtime_method(
                 "resultSuccess",
                 vec![result_success_arg(call)],
             ))),
-            "result_err" => Ok(Some(runtime_method(
+            "result_err" | "Result.err" => Ok(Some(runtime_method(
                 "resultFailure",
                 vec![normalize_error(result_constructor_arg(call))],
             ))),
@@ -303,11 +305,20 @@ impl KotlinMaterializer {
             "path_to_string_lossy" | "os_str_to_string_lossy" => {
                 Ok(Some(invoke_method(receiver(), "toString", Vec::new())))
             }
-            "env_var" => Ok(Some(invoke_static_method(
+            "env_var" => Ok(Some(run_catching(invoke_static_method(
                 &["java", "lang", "System"],
                 "getenv",
                 call.args.clone(),
-            ))),
+            )))),
+            "env_current_dir" => Ok(Some(run_catching(invoke_static_method(
+                &["java", "nio", "file", "Path"],
+                "of",
+                vec![invoke_static_method(
+                    &["java", "lang", "System"],
+                    "getProperty",
+                    vec![Expr::value(Value::string("user.dir".to_owned()))],
+                )],
+            )))),
             "dir_entry_path" => Ok(Some(invoke_method(receiver(), "path", Vec::new()))),
             "dir_entry_file_type" => Ok(Some(run_catching(invoke_method(
                 receiver(),

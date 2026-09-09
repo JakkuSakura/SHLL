@@ -944,45 +944,45 @@ impl KotlinBackend {
         let output_root = self.output_root()?;
         let workspace = context.ast_program.as_ref();
         let scan = self.ensure_scan(workspace)?;
-        // Materialize the central portable-operation representation into
-        // Kotlin constructs before serialization. `package_source` derives
-        // from this compiled package, so the materialized AST is what the
-        // serializer consumes.
-        {
-            let compiled = workspace.compiled_package(package_id).ok_or_else(|| {
-                fp_core::error::Error::from(format!(
-                    "package `{package_id}` is unavailable for materialization"
-                ))
-            })?;
-            let mut compiled = compiled.borrow_mut();
-            let hir_program = context.hir_program.borrow();
-            let hir_package = hir_program.package(package_id).ok_or_else(|| {
-                fp_core::error::Error::from(format!("HIR package `{package_id}` is unavailable"))
-            })?;
-            let lifter = fp_backend::transforms::HirToAstLifter::new(&hir_package, &hir_program)
-                .with_capabilities(crate::CAPABILITIES);
-            let lifter = if let Some(operations) = self.portable_operation_registry() {
-                lifter.with_target_operations(operations)
-            } else {
-                lifter
-            };
-            let lifter = if let Some(materializer) = self.intrinsic_materializer() {
-                lifter.with_materializer(materializer)
-            } else {
-                lifter
-            };
-            compiled.module = lifter.lift_module()?;
-            compiled.referenced_paths = lifter.referenced_source_paths();
-            for module in std::iter::once(&mut compiled.module) {
-                for item in &mut module.items {
-                    *item = materialize_kotlin_item(item.clone())?;
-                }
-            }
-        }
-        let package = workspace.package_source(package_id)?;
-        let package = &package;
+        // Build a fresh AST package from HIR for this backend. The compiled
+        // provider package is treated as immutable source metadata only; no
+        // backend state is reassigned or mutated.
+        let source_package = workspace.package_source(package_id)?;
+        let hir_program = context.hir_program.borrow();
+        let hir_package = hir_program.package(package_id).ok_or_else(|| {
+            fp_core::error::Error::from(format!("HIR package `{package_id}` is unavailable"))
+        })?;
+        let lifter = fp_backend::transforms::HirToAstLifter::new(&hir_package, &hir_program)
+            .with_capabilities(crate::CAPABILITIES);
+        let lifter = if let Some(operations) = self.portable_operation_registry() {
+            lifter.with_target_operations(operations)
+        } else {
+            lifter
+        };
+        let lifter = if let Some(operations) = context.source_operations.clone() {
+            lifter.with_source_operations(operations)
+        } else {
+            lifter
+        };
+        let lifter = if let Some(materializer) = self.intrinsic_materializer() {
+            lifter.with_materializer(materializer)
+        } else {
+            lifter
+        };
+        let mut package = lifter.lift_package(&source_package)?;
+        let lifted_module = package.module;
+        let materialized_items = lifted_module
+            .items
+            .into_iter()
+            .map(materialize_kotlin_item)
+            .collect::<fp_core::error::Result<Vec<_>>>()?;
+        let materialized_module = fp_core::ast::Module {
+            items: materialized_items,
+            ..lifted_module
+        };
+        package.module = materialized_module;
         let files = self.serializer.serialize_package(
-            package,
+            &package,
             &scan.workspace_packages,
             &scan.kotlin_packages,
             &scan.ctx,
@@ -1035,7 +1035,6 @@ impl KotlinBackend {
         self.publish_output()
     }
 }
-
 
 fn runtime_build_gradle() -> &'static str {
     "plugins {\n    kotlin(\"jvm\") version \"2.1.0\"\n    kotlin(\"plugin.serialization\") version \"2.1.0\"\n}\n\n\
