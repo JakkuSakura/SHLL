@@ -129,8 +129,8 @@ pub(super) fn parse_gpr_register(token: &str) -> Result<u8> {
 }
 
 pub(super) fn decode_stream(bytes: &[u8]) -> Result<Vec<DecodedInstruction>> {
-    use capstone::Syntax;
-    use capstone::prelude::*;
+    use ::capstone::Syntax;
+    use ::capstone::prelude::*;
 
     let mut capstone = Capstone::new()
         .x86()

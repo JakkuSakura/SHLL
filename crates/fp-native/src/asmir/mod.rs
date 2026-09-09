@@ -1848,4 +1848,5 @@ fn aarch64_condition_to_x86_equivalent(condition: Aarch64ConditionCode) -> X86Co
     }
 }
 
+#[cfg(test)]
 mod tests;
