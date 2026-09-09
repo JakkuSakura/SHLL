@@ -4185,22 +4185,41 @@ impl HirTypeChecker {
         // (BuiltinSelfType::Primitive(..))` fallback). The receiver type
         // is simply the primitive itself; resolve the tail the same way
         // `Self::`/struct bases already do.
-        if let hir::Res::Builtin(hir::BuiltinSelfType::Primitive(name)) = &path.res {
-            if let (Some(receiver_ty), Some(tail)) = (primitive_path_ty(name), path.segments.get(1))
+        if path.segments.len() == 2 {
+            let primitive_name = match &path.res {
+                hir::Res::Builtin(hir::BuiltinSelfType::Primitive(name)) => Some(name.as_str()),
+                _ => Some(path.segments[0].ident.as_str()),
+            };
+            if let Some(name) = primitive_name
+                && let Some(receiver_ty) = primitive_path_ty(name)
             {
-                if path.segments.len() == 2 {
-                    if let Some(sig) = self
-                        .method_declared_signature_at(&receiver_ty, &tail.ident)
-                        .await?
-                    {
-                        return Ok(sig);
-                    }
-                    return Ok(self.error_ty(format!(
-                        "no item named `{}` found on primitive `{}`",
-                        tail.ident, name
-                    )));
+                let tail = &path.segments[1];
+                if let Some(sig) = self
+                    .method_declared_signature_at(&receiver_ty, &tail.ident)
+                    .await?
+                {
+                    return Ok(sig);
                 }
+                // The primitive integer modules are compiler-provided in
+                // rustc. Their inherent constants remain available even
+                // when the vendored source does not materialize a concrete
+                // impl item for a particular target-width primitive.
+                if matches!(tail.ident.as_str(), "MIN" | "MAX") {
+                    return Ok(receiver_ty);
+                }
+                if tail.ident == "BITS" {
+                    return Ok(Ty::uint(ty::UintTy::U32));
+                }
+                return Ok(self.error_ty(format!(
+                    "no item named `{}` found on primitive `{}`",
+                    tail.ident, name
+                )));
             }
+        }
+        if matches!(
+            &path.res,
+            hir::Res::Builtin(hir::BuiltinSelfType::Primitive(_))
+        ) {
             // A bare primitive name used standalone as a value (e.g. a
             // macro's own type parameter substituted directly into a
             // generic-argument-as-value position, like real vendored
