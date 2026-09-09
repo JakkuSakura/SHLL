@@ -4248,7 +4248,14 @@ impl HirTypeChecker {
         // by the lossy HIR lowering. Resolve the alias first, then perform
         // the same associated-item lookup rustc performs after alias
         // normalization.
-        if path.segments.len() == 2 && matches!(path.res, hir::Res::Def(_)) {
+        let path_def_is_type_alias = match path.res_ref() {
+            hir::Res::Def(def_id) => self
+                .program_rc()
+                .item(def_id.clone())
+                .is_some_and(|item| matches!(item.kind, hir::ItemKind::TypeAlias(_))),
+            _ => false,
+        };
+        if path.segments.len() == 2 && path_def_is_type_alias {
             let mut base_path = path.clone();
             base_path.segments.pop();
             let base = hir::QPath::Resolved(None, base_path);
