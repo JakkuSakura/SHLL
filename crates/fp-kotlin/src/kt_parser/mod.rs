@@ -201,6 +201,22 @@ mod tests {
         assert_eq!(decls[0].members[0].op_method.as_deref(), Some("unwrap_or"));
     }
 
+    #[test]
+    fn captures_op_variant_annotations_on_enum_entries() {
+        let src = r#"
+            @Op(class = "Option")
+            public enum class OptionTag {
+                @Op(variant = "none") None,
+                @Op(variant = "some") Some;
+            }
+        "#;
+        let (decls, warnings) = parse_and_count_warnings(src);
+        assert_eq!(warnings, 0);
+        assert_eq!(decls[0].op_class.as_deref(), Some("Option"));
+        assert_eq!(decls[0].members[0].op_variant.as_deref(), Some("none"));
+        assert_eq!(decls[0].members[1].op_variant.as_deref(), Some("some"));
+    }
+
     /// Not a pass/fail gate — walks the vendored Kotlin stdlib
     /// (`crates/fp-kotlin/std`, see `docs/KotlinStd.md`) and reports how
     /// many files parse with zero warnings vs. partial/zero declarations

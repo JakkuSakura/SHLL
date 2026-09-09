@@ -46,21 +46,42 @@ fn collect_kotlin_operation_decls(
                 Path::plain(path.into_iter().map(Ident::new).collect()),
             );
         }
+        if let (Some(op_class), Some(op_variant)) = (
+            declaration.op_class.as_deref(),
+            declaration.op_variant.as_deref(),
+        ) {
+            let mut path = module_path.to_vec();
+            path.push(declaration.name.clone());
+            registry.insert_variant_declaration(
+                op_class,
+                op_variant,
+                Path::plain(path.into_iter().map(Ident::new).collect()),
+            );
+        }
         if let Some(op_class) = declaration.op_class.as_deref() {
             for member in &declaration.members {
-                let Some(op_method) = member.op_method.as_deref() else {
-                    continue;
-                };
-                let mut path = module_path.to_vec();
-                path.push(declaration.name.clone());
-                path.push(member.name.clone());
-                registry.insert_method_declaration(
-                    op_class,
-                    op_method,
-                    member.params.len(),
-                    fp_core::intrinsics::ResultTypeRule::NotStaticallyKnowable,
-                    Path::plain(path.into_iter().map(Ident::new).collect()),
-                );
+                if let Some(op_method) = member.op_method.as_deref() {
+                    let mut path = module_path.to_vec();
+                    path.push(declaration.name.clone());
+                    path.push(member.name.clone());
+                    registry.insert_method_declaration(
+                        op_class,
+                        op_method,
+                        member.params.len(),
+                        fp_core::intrinsics::ResultTypeRule::NotStaticallyKnowable,
+                        Path::plain(path.into_iter().map(Ident::new).collect()),
+                    );
+                }
+                if let Some(op_variant) = member.op_variant.as_deref() {
+                    let mut path = module_path.to_vec();
+                    path.push(declaration.name.clone());
+                    path.push(member.name.clone());
+                    registry.insert_variant_declaration(
+                        op_class,
+                        op_variant,
+                        Path::plain(path.into_iter().map(Ident::new).collect()),
+                    );
+                }
             }
         }
         let mut nested_path = module_path.to_vec();
@@ -296,6 +317,7 @@ mod tests {
             op_class: None,
             op_method: Some("unwrap_or".to_string()),
             op_func: None,
+            op_variant: None,
         };
         let class = crate::kt_parser::KtDecl {
             kind: crate::kt_parser::KtDeclKind::Class,
@@ -310,6 +332,7 @@ mod tests {
             op_class: Some("Option".to_string()),
             op_method: None,
             op_func: None,
+            op_variant: None,
         };
         let mut registry = fp_core::lang::LangItemRegistry::default();
         collect_kotlin_operation_decls(&[class], &["kotlin".to_string()], &mut registry);
@@ -324,6 +347,49 @@ mod tests {
     }
 
     #[test]
+    fn kotlin_enum_variant_declarations_register_non_receiver_ops() {
+        let variant = crate::kt_parser::KtDecl {
+            kind: crate::kt_parser::KtDeclKind::Property,
+            name: "Some".to_string(),
+            type_params: Vec::new(),
+            receiver: None,
+            params: Vec::new(),
+            return_type: None,
+            supertypes: Vec::new(),
+            is_mutable: false,
+            members: Vec::new(),
+            op_class: None,
+            op_method: None,
+            op_func: None,
+            op_variant: Some("some".to_string()),
+        };
+        let class = crate::kt_parser::KtDecl {
+            kind: crate::kt_parser::KtDeclKind::Class,
+            name: "OptionTag".to_string(),
+            type_params: Vec::new(),
+            receiver: None,
+            params: Vec::new(),
+            return_type: None,
+            supertypes: Vec::new(),
+            is_mutable: false,
+            members: vec![variant],
+            op_class: Some("Option".to_string()),
+            op_method: None,
+            op_func: None,
+            op_variant: None,
+        };
+        let mut registry = fp_core::lang::LangItemRegistry::default();
+        collect_kotlin_operation_decls(&[class], &["kotlin".to_string()], &mut registry);
+        let op = registry
+            .resolve_operation(fp_core::lang::OperationSelector::DeclarationKey(
+                "Option.some",
+            ))
+            .expect("registered enum variant operation");
+        assert!(!op.op.arity.receiver);
+        assert_eq!(op.path.to_string(), "kotlin::OptionTag::Some");
+    }
+
+    #[test]
     fn vendored_kotlin_std_registers_native_portable_operations() {
         let registry = kotlin_operation_registry().expect("load Kotlin std operations");
         for key in [
@@ -334,6 +400,20 @@ mod tests {
             "str.trim",
             "str.trim_start",
             "str.trim_end",
+            "Option.none",
+            "Option.some",
+            "fs_create_dir_all",
+            "fs_create_dir",
+            "fs_canonicalize",
+            "fs_exists",
+            "fs_read",
+            "fs_read_dir",
+            "fs_remove_dir_all",
+            "fs_remove_file",
+            "fs_write_string",
+            "env_current_dir",
+            "env_home_dir",
+            "env_temp_dir",
         ] {
             assert!(
                 registry
@@ -596,8 +676,16 @@ fn kotlin_runtime_source(prefix: Option<&str>) -> String {
              fun readDirectory(path: java.nio.file.Path): Result<List<DirEntry>> = runCatching {{\n\
                  java.nio.file.Files.list(path).use {{ entries -> entries.map(::DirEntry).toList() }}\n\
              }}\n\
+             fun readText(path: java.nio.file.Path): Result<String> = runCatching {{ java.nio.file.Files.readString(path) }}\n\
+             fun readBytes(path: java.nio.file.Path): Result<ByteArray> = runCatching {{ java.nio.file.Files.readAllBytes(path) }}\n\
+             fun envVar(key: String): Result<String> = runCatching {{ System.getenv(key) ?: error(\"environment variable not present: $key\") }}\n\
+             fun currentDir(): java.nio.file.Path = java.nio.file.Paths.get(System.getProperty(\"user.dir\"))\n\
+             fun homeDir(): java.nio.file.Path = java.nio.file.Paths.get(System.getProperty(\"user.home\"))\n\
+             fun tempDir(): java.nio.file.Path = java.nio.file.Paths.get(System.getProperty(\"java.io.tmpdir\"))\n\
              fun createDirectory(path: java.nio.file.Path): Result<Unit> = runCatching<Unit> {{ java.nio.file.Files.createDirectory(path); Unit }}\n\
              fun createDirectories(path: java.nio.file.Path): Result<Unit> = runCatching<Unit> {{ java.nio.file.Files.createDirectories(path); Unit }}\n\
+             fun removeFile(path: java.nio.file.Path): Result<Unit> = runCatching<Unit> {{ java.nio.file.Files.delete(path); Unit }}\n\
+             fun writeString(path: java.nio.file.Path, content: String): Result<Unit> = runCatching<Unit> {{ java.nio.file.Files.writeString(path, content); Unit }}\n\
              fun createFile(path: java.nio.file.Path): Result<java.io.OutputStream> = runCatching {{ java.nio.file.Files.newOutputStream(path, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING, java.nio.file.StandardOpenOption.WRITE) }}\n\
              fun canonicalize(path: java.nio.file.Path): Result<java.nio.file.Path> = runCatching {{ path.toRealPath() }}\n\
              fun writeAll(stream: java.io.OutputStream, bytes: ByteArray): Result<Unit> = runCatching<Unit> {{ stream.write(bytes); Unit }}\n\

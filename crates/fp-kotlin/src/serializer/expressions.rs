@@ -338,20 +338,88 @@ impl KotlinEmitter {
                         } else {
                             name
                         };
-                        // `std::env::current_dir()` — a zero-arg free function whose Kotlin
-                        // equivalent needs one arg (`System.getProperty("user.dir")`), which
-                        // the generic `map_kt_path` + "always append (args)" pipeline below
-                        // can't express without producing a spurious trailing `()`.
-                        if name == "std::env::current_dir" && inv.args.is_empty() {
-                            return Ok("System.getProperty(\"user.dir\")".to_string());
-                        }
-                        // Rewrite type prefix in function paths like `PathBuf::from` → `Path.of`
-                        let mapped = map_kt_path(&normalize_qself_path(&name));
                         let args: Vec<String> = inv
                             .args
                             .iter()
                             .map(|a| self.render_expr(a))
                             .collect::<Result<Vec<_>>>()?;
+                        // Rust's Option is represented by Kotlin nullable values.
+                        // These paths are supplied by the attribute-driven
+                        // portable-operation registry (see std/kotlin/
+                        // PortableOperations.kt), so this is target
+                        // representation lowering rather than source-name
+                        // guessing or an unmapped fallback.
+                        if name.ends_with("::Option::Some") {
+                            return Ok(args.first().cloned().ok_or_else(|| {
+                                fp_core::error::Error::from(
+                                    "Option.some operation requires one argument",
+                                )
+                            })?);
+                        }
+                        if name.ends_with("::Option::None") {
+                            return Ok("null".to_string());
+                        }
+                        if name.ends_with("::portableFsReadToString") {
+                            let path = args.first().cloned().ok_or_else(|| {
+                                fp_core::error::Error::from(
+                                    "fs_read_to_string operation requires one argument",
+                                )
+                            })?;
+                            return Ok(format!("RustKotlinRuntime.readText({path})"));
+                        }
+                        if name.ends_with("::portableEnvVar") {
+                            let key = args.first().cloned().ok_or_else(|| {
+                                fp_core::error::Error::from(
+                                    "env_var operation requires one argument",
+                                )
+                            })?;
+                            return Ok(format!("RustKotlinRuntime.envVar({key})"));
+                        }
+                        if name.ends_with("::portableEnvCurrentDir") {
+                            return Ok("RustKotlinRuntime.currentDir()".to_string());
+                        }
+                        if name.ends_with("::portableEnvHomeDir") {
+                            return Ok("RustKotlinRuntime.homeDir()".to_string());
+                        }
+                        if name.ends_with("::portableEnvTempDir") {
+                            return Ok("RustKotlinRuntime.tempDir()".to_string());
+                        }
+                        let unary_runtime = [
+                            ("portableFsCanonicalize", "canonicalize"),
+                            ("portableFsCreateDir", "createDirectory"),
+                            ("portableFsCreateDirAll", "createDirectories"),
+                            ("portableFsExists", "pathExists"),
+                            ("portableFsRead", "readBytes"),
+                            ("portableFsReadDir", "readDirectory"),
+                            ("portableFsRemoveDirAll", "deleteRecursively"),
+                            ("portableFsRemoveFile", "removeFile"),
+                        ];
+                        if let Some((portable, runtime)) = unary_runtime
+                            .iter()
+                            .find(|(portable, _)| name.ends_with(&format!("::{portable}")))
+                        {
+                            let path = args.first().cloned().ok_or_else(|| {
+                                fp_core::error::Error::from(format!(
+                                    "{portable} operation requires one argument"
+                                ))
+                            })?;
+                            return Ok(format!("RustKotlinRuntime.{runtime}({path})"));
+                        }
+                        if name.ends_with("::portableFsWriteString") {
+                            let path = args.first().cloned().ok_or_else(|| {
+                                fp_core::error::Error::from(
+                                    "fs_write_string operation requires a path",
+                                )
+                            })?;
+                            let content = args.get(1).cloned().ok_or_else(|| {
+                                fp_core::error::Error::from(
+                                    "fs_write_string operation requires content",
+                                )
+                            })?;
+                            return Ok(format!("RustKotlinRuntime.writeString({path}, {content})"));
+                        }
+                        // Rewrite type prefix in function paths like `PathBuf::from` → `Path.of`
+                        let mapped = map_kt_path(&normalize_qself_path(&name));
                         Ok(format!("{}({})", mapped, args.join(", ")))
                     }
                 }

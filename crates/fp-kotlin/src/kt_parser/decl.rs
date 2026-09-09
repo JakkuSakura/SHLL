@@ -70,6 +70,9 @@ pub struct KtDecl {
     pub op_method: Option<String>,
     /// `@Op(func = "bar")` on a top-level `fun` — mirrors `#[op(func = "bar")]`.
     pub op_func: Option<String>,
+    /// `@Op(variant = "some")` on an enum entry — mirrors
+    /// `#[op(variant = "some")]`.
+    pub op_variant: Option<String>,
 }
 
 impl KtDecl {
@@ -87,6 +90,7 @@ impl KtDecl {
             op_class: None,
             op_method: None,
             op_func: None,
+            op_variant: None,
         }
     }
 }
@@ -291,6 +295,8 @@ struct Modifiers {
     op_method: Option<String>,
     /// `@Op(func = "bar")` — mirrors `#[op(func = "bar")]`.
     op_func: Option<String>,
+    /// `@Op(variant = "some")` on an enum entry.
+    op_variant: Option<String>,
 }
 
 /// Skips annotations/modifiers, capturing `enum class` and the single
@@ -322,10 +328,11 @@ fn skip_annotations_and_modifiers(cur: &mut Cursor) -> Modifiers {
                 };
                 cur.pos = start;
                 skip_balanced(cur, "(", ")");
-                if let Some((class, method, func)) = args {
+                if let Some((class, method, func, variant)) = args {
                     mods.op_class = mods.op_class.or(class);
                     mods.op_method = mods.op_method.or(method);
                     mods.op_func = mods.op_func.or(func);
+                    mods.op_variant = mods.op_variant.or(variant);
                 }
             }
             continue;
@@ -354,16 +361,21 @@ fn skip_annotations_and_modifiers(cur: &mut Cursor) -> Modifiers {
 }
 
 /// Parses `@Op(class = "Foo", method = "bar", func = "baz")`'s parenthesized
-/// argument list (cursor positioned at the opening `(`) into its three
+/// argument list (cursor positioned at the opening `(`) into its four
 /// possible named values — mirrors the Rust frontend's `#[op(class = "Foo",
 /// method = "bar", func = "baz")]` (`fp-core/src/lang/mod.rs`).
 fn parse_op_annotation_args(
     cur: &mut Cursor,
-) -> Option<(Option<String>, Option<String>, Option<String>)> {
+) -> Option<(
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+)> {
     if !cur.eat("(") {
         return None;
     }
-    let (mut class, mut method, mut func) = (None, None, None);
+    let (mut class, mut method, mut func, mut variant) = (None, None, None, None);
     if cur.peek() != Some(")") {
         loop {
             let key = cur.peek().map(|s| s.to_string())?;
@@ -385,6 +397,7 @@ fn parse_op_annotation_args(
                 "class" => class = value,
                 "method" => method = value,
                 "func" => func = value,
+                "variant" => variant = value,
                 _ => {}
             }
             if cur.eat(",") {
@@ -394,7 +407,7 @@ fn parse_op_annotation_args(
         }
     }
     let _ = cur.eat(")");
-    Some((class, method, func))
+    Some((class, method, func, variant))
 }
 
 /// Strips a lexed string-literal token's surrounding quotes (single- or
@@ -464,6 +477,7 @@ fn parse_one_declaration(
         decl.op_class = mods.op_class;
         decl.op_method = mods.op_method;
         decl.op_func = mods.op_func;
+        decl.op_variant = mods.op_variant;
         return Ok(Some(decl));
     }
     match cur.peek() {
@@ -821,7 +835,7 @@ fn parse_class_like(
 fn parse_enum_constants(cur: &mut Cursor) -> Vec<KtDecl> {
     let mut constants = Vec::new();
     loop {
-        skip_annotations_and_modifiers(cur);
+        let mods = skip_annotations_and_modifiers(cur);
         match cur.peek_kind() {
             Some(TokenKind::Ident) if !is_decl_start_keyword(cur.peek().unwrap()) => {
                 let name = cur.expect_ident().unwrap();
@@ -831,7 +845,9 @@ fn parse_enum_constants(cur: &mut Cursor) -> Vec<KtDecl> {
                 if cur.peek() == Some("{") {
                     skip_balanced(cur, "{", "}");
                 }
-                constants.push(KtDecl::new(KtDeclKind::Property, name));
+                let mut constant = KtDecl::new(KtDeclKind::Property, name);
+                constant.op_variant = mods.op_variant;
+                constants.push(constant);
                 if cur.eat(",") {
                     continue;
                 }
