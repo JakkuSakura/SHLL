@@ -908,7 +908,7 @@ impl TargetBackend for KotlinBackend {
         for package_id in &context.emitted_packages {
             let mir = context.mir_program.package(package_id).map(|package| { let package = package.borrow(); let mut unit = fp_core::mir::MirCodeUnit::new(); unit.items.extend(package.items().cloned()); unit.bodies.extend(package.bodies().map(|(id, body)| (*id, body.clone()))); unit }).unwrap_or_else(fp_core::mir::MirCodeUnit::new);
             let lir = context.lir_program.merged_blob_for_package(package_id).ok();
-            self.emit_package(context.ast_program.as_ref(), package_id, &mir, lir.as_ref())?;
+            self.emit_package(context, package_id, &mir, lir.as_ref())?;
         }
         self.write_workspace(context.ast_program.as_ref(), &context.hir_program.borrow())
     }
@@ -936,12 +936,13 @@ impl TargetBackend for KotlinBackend {
 impl KotlinBackend {
     fn emit_package(
         &self,
-        workspace: &fp_core::ast::program::AstProgram,
+        context: &fp_core::backend::BackendContext,
         package_id: &fp_core::ast::package::PackageId,
         mir: &fp_core::mir::MirCodeUnit,
         lir: Option<&fp_core::lir::LirBlob>,
     ) -> fp_core::error::Result<()> {
         let output_root = self.output_root()?;
+        let workspace = context.ast_program.as_ref();
         let scan = self.ensure_scan(workspace)?;
         // Materialize the central portable-operation representation into
         // Kotlin constructs before serialization. `package_source` derives
@@ -954,6 +955,24 @@ impl KotlinBackend {
                 ))
             })?;
             let mut compiled = compiled.borrow_mut();
+            let hir_program = context.hir_program.borrow();
+            let hir_package = hir_program.package(package_id).ok_or_else(|| {
+                fp_core::error::Error::from(format!("HIR package `{package_id}` is unavailable"))
+            })?;
+            let lifter = fp_backend::transforms::HirToAstLifter::new(&hir_package, &hir_program)
+                .with_capabilities(crate::CAPABILITIES);
+            let lifter = if let Some(operations) = self.portable_operation_registry() {
+                lifter.with_target_operations(operations)
+            } else {
+                lifter
+            };
+            let lifter = if let Some(materializer) = self.intrinsic_materializer() {
+                lifter.with_materializer(materializer)
+            } else {
+                lifter
+            };
+            compiled.module = lifter.lift_module()?;
+            compiled.referenced_paths = lifter.referenced_source_paths();
             for module in std::iter::once(&mut compiled.module) {
                 for item in &mut module.items {
                     *item = materialize_kotlin_item(item.clone())?;

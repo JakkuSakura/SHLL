@@ -270,10 +270,25 @@ impl KotlinMaterializer {
                 "readAllBytes",
                 call.args.clone(),
             )))),
+            "fs_read_to_string" => Ok(Some(run_catching(invoke_static_method(
+                &["java", "nio", "file", "Files"],
+                "readString",
+                call.args.clone(),
+            )))),
+            "fs_write_string" => Ok(Some(run_catching(unit_block(invoke_static_method(
+                &["java", "nio", "file", "Files"],
+                "writeString",
+                call.args.clone(),
+            ))))),
             "fs_read_dir" => Ok(Some(runtime_method("readDirectory", call.args.clone()))),
             "fs_create_dir" => Ok(Some(runtime_method("createDirectory", call.args.clone()))),
             "fs_create_dir_all" => Ok(Some(runtime_method("createDirectories", call.args.clone()))),
             "file_create" => Ok(Some(runtime_method("createFile", call.args.clone()))),
+            "fs_remove_file" => Ok(Some(run_catching(unit_block(invoke_static_method(
+                &["java", "nio", "file", "Files"],
+                "delete",
+                call.args.clone(),
+            ))))),
             "fs_canonicalize" => Ok(Some(runtime_method("canonicalize", call.args.clone()))),
             "path_canonicalize" => Ok(Some(runtime_method("canonicalize", vec![receiver()]))),
             "path_exists" => Ok(Some(runtime_method("pathExists", vec![receiver()]))),
@@ -288,6 +303,11 @@ impl KotlinMaterializer {
             "path_to_string_lossy" | "os_str_to_string_lossy" => {
                 Ok(Some(invoke_method(receiver(), "toString", Vec::new())))
             }
+            "env_var" => Ok(Some(invoke_static_method(
+                &["java", "lang", "System"],
+                "getenv",
+                call.args.clone(),
+            ))),
             "dir_entry_path" => Ok(Some(invoke_method(receiver(), "path", Vec::new()))),
             "dir_entry_file_type" => Ok(Some(run_catching(invoke_method(
                 receiver(),

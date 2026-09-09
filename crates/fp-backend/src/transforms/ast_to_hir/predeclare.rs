@@ -172,6 +172,17 @@ impl AstToHirLowerer {
                             variant_def_id.clone(),
                             &def_enum.visibility,
                         );
+                        let source_path = fp_core::ast::path::InPackagePath::new(
+                            self.module_path
+                                .segments
+                                .iter()
+                                .cloned()
+                                .chain(variant_path.segments.iter().cloned())
+                                .collect(),
+                        );
+                        self.package_mut()
+                            .source_paths
+                            .insert(variant_def_id.clone(), source_path);
                         self.enum_variant_def_ids
                             .insert(fully_qualified, variant_def_id);
                     }
@@ -267,6 +278,17 @@ impl AstToHirLowerer {
                                         variant_def_id.clone(),
                                         &def_type.visibility,
                                     );
+                                    let source_path = fp_core::ast::path::InPackagePath::new(
+                                        self.module_path
+                                            .segments
+                                            .iter()
+                                            .cloned()
+                                            .chain(variant_path.segments.iter().cloned())
+                                            .collect(),
+                                    );
+                                    self.package_mut()
+                                        .source_paths
+                                        .insert(variant_def_id.clone(), source_path);
                                     self.enum_variant_def_ids
                                         .insert(fully_qualified, variant_def_id);
                                 }

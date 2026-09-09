@@ -235,9 +235,25 @@ pub fn collect_lang_items(file: &File) -> LangItemRegistry {
 /// provider wrapper) accumulate one registry across every item a package
 /// yields, one at a time, before merging with `LangItemRegistry::extend`.
 pub fn collect_lang_items_from_item(item: &Item) -> LangItemRegistry {
+    collect_lang_items_from_item_at_path(item, &[])
+}
+
+/// Collects operation/intrinsic declarations from an item whose source file
+/// lives under `module_path`. Package providers expose file items separately,
+/// so the path must be supplied explicitly or free-function `#[op]` markers
+/// are registered without their module qualifier and cannot be resolved from
+/// typed call paths.
+pub fn collect_lang_items_from_item_at_path(
+    item: &Item,
+    module_path: &[String],
+) -> LangItemRegistry {
     let mut registry = LangItemRegistry::default();
-    let mut module_path = Vec::new();
-    collect_lang_items_from_items(std::slice::from_ref(item), &mut module_path, &mut registry);
+    let mut path = module_path
+        .iter()
+        .cloned()
+        .map(Ident::new)
+        .collect::<Vec<_>>();
+    collect_lang_items_from_items(std::slice::from_ref(item), &mut path, &mut registry);
     registry
 }
 

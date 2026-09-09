@@ -320,7 +320,39 @@ impl<'a> HirToAstLifter<'a> {
         let hir::Res::Def(def_id) = path.res_ref() else {
             return None;
         };
-        self.portable_op_for_def(def_id)
+        let source_path = self.hir_program.source_path(def_id.clone())?;
+        let mut segments = source_path
+            .segments()
+            .iter()
+            .map(|segment| segment.as_str().to_string())
+            .collect::<Vec<_>>();
+        let direct = self
+            .source_converter
+            .as_ref()
+            .and_then(|converter| {
+                let refs = segments.iter().map(String::as_str).collect::<Vec<_>>();
+                converter.convert_from_source_path(&refs)
+            });
+        if direct.is_some() {
+            return direct;
+        }
+        // Enum constructors resolve to the enum's DefId while the operation
+        // declaration is attached to the variant. Reconstruct that final
+        // source segment from the resolved path so `Result::Ok` and
+        // `Option::Some` use the std-file `#[op(variant = ...)]` metadata.
+        if let Some(segment) = path.segments.last() {
+            if segments.last().is_none_or(|last| last != segment.ident.as_str()) {
+                segments.push(segment.ident.as_str().to_string());
+                return self
+                    .source_converter
+                    .as_ref()
+                    .and_then(|converter| {
+                        let refs = segments.iter().map(String::as_str).collect::<Vec<_>>();
+                        converter.convert_from_source_path(&refs)
+                    });
+            }
+        }
+        None
     }
 
     /// Resolve a declaration-tagged call through the definition's owning
@@ -376,21 +408,28 @@ impl<'a> HirToAstLifter<'a> {
         self.reconstruct_closures(items)
     }
 
-    /// Best-effort variant of [`lift_program`](Self::lift_program) for
-    /// splicing typed content back onto an existing source AST
-    /// (`fp-cli::compiler::typecheck_package`), keyed by each item's
-    /// semantic `DefId` rather than list position.
-    ///
-    /// Unlike `lift_program`, a single item that fails to lift (e.g. a
-    /// nested `hir::ExprKind::Query`, or any other not-yet-supported
-    /// shape) is simply omitted from the result instead of aborting the
-    /// whole program — the caller keeps that one item's original,
-    /// untyped source form rather than losing typed info for every other
-    /// item in the package. Items without a source-path entry (e.g.
-    /// synthetic struct definitions for anonymous/structural literals,
-    /// `register_structural_value_def`/`materialize_enum_struct_payload`
-    /// in `ast_to_hir/mod.rs`) have no source counterpart to splice onto
-    /// and are likewise omitted.
+    /// Reconstruct a complete AST module from typed HIR. This is the backend
+    /// transpilation boundary: no provider AST is reused or patched.
+    pub fn lift_module(&self) -> Result<ast::Module> {
+        let mut root = ast::Module {
+            attrs: Vec::new(),
+            name: Ident::new(""),
+            items: Vec::new(),
+            visibility: ast::Visibility::Public,
+            is_external: false,
+        };
+        for item in &self.package.items {
+            let lifted = self.lift_item(item)?;
+            let Some(path) = self.source_path_for(&item.def_id) else {
+                root.items.push(lifted);
+                continue;
+            };
+            insert_lifted_item(&mut root, &path.segments, lifted);
+        }
+        Ok(root)
+    }
+
+    /// Legacy per-definition lifting helpers retained for focused tests.
     pub fn lift_items_by_def_id(&self) -> HashMap<hir::DefId, Item> {
         let mut lifted = Vec::new();
         for item in &self.package.items {
@@ -830,10 +869,10 @@ impl<'a> HirToAstLifter<'a> {
                     .as_ref()
                     .and_then(|def_id| self.portable_op_for_def(def_id))
                     .or_else(|| match &callee.kind {
-                        hir::ExprKind::Path(path) => match path.res() {
-                            hir::Res::Def(ref def_id) => self.portable_op_for_def(def_id),
-                            _ => None,
-                        },
+                        hir::ExprKind::Path(hir::QPath::Resolved(_, path)) => {
+                            self.portable_op_for_path(path)
+                        }
+                        hir::ExprKind::Path(_) => None,
                         _ => None,
                     });
                 if let Some(op) = portable_op {
@@ -2311,6 +2350,36 @@ fn type_expr_contains_infer(ty: &hir::TypeExpr) -> bool {
 /// variant only fails *open* (the parameter keeps its unfixed, pre-existing
 /// "reassigning a val" codegen error) rather than silently emitting wrong
 /// behavior.
+fn insert_lifted_item(module: &mut ast::Module, path: &[String], item: Item) {
+    let Some((head, tail)) = path.split_first() else {
+        module.items.push(item);
+        return;
+    };
+    if tail.is_empty() {
+        module.items.push(item);
+        return;
+    }
+    let child = module.items.iter_mut().find_map(|existing| {
+        let ast::ItemKind::Module(child) = existing.kind_mut() else {
+            return None;
+        };
+        (child.name.as_str() == head).then_some(child)
+    });
+    if let Some(child) = child {
+        insert_lifted_item(child, tail, item);
+        return;
+    }
+    let mut child = ast::Module {
+        attrs: Vec::new(),
+        name: Ident::new(head),
+        items: Vec::new(),
+        visibility: ast::Visibility::Public,
+        is_external: false,
+    };
+    insert_lifted_item(&mut child, tail, item);
+    module.items.push(Item::new(ast::ItemKind::Module(child)));
+}
+
 fn block_assigns_local(block: &hir::Block, target: hir::HirId) -> bool {
     block
         .stmts

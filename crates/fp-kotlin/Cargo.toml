@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 fp-core = { path = "../fp-core" }
+fp-backend = { path = "../fp-backend" }
 tracing = "0.1"
 itertools = "0.13"
 eyre = "0.6.12"

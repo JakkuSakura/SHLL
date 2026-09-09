@@ -970,41 +970,7 @@ impl CompilerDriver {
         current_package_id: PackageId,
         hir_package_id: hir::PackageId,
     ) -> Result<(), CompilerDriverError> {
-        // Scoped narrowly — HIR-to-AST reference facts are owned data, so
-        // nothing here needs to outlive this block.
-        let referenced_paths = {
-            let state = self.state.borrow();
-            let hir = state.hir(hir_package_id.clone())?;
-            let hir_program = state.hir_program();
-            let hir_program = hir_program.borrow();
-            let lifter = fp_backend::transforms::HirToAstLifter::new(&hir, &hir_program)
-                .with_capabilities(state.backend_capabilities());
-            let lifter = if let Some(operations) = state.target_operations() {
-                lifter.with_target_operations(operations)
-            } else {
-                lifter
-            };
-            let lifter = if let Some(operations) = state.source_operations() {
-                lifter.with_source_operations(operations)
-            } else {
-                lifter
-            };
-            let lifter = if let Some(materializer) = state.intrinsic_materializer() {
-                lifter.with_materializer(materializer)
-            } else {
-                lifter
-            };
-            lifter.referenced_source_paths()
-        };
-        if let Some(pkg) = self
-            .state
-            .borrow()
-            .ast_program
-            .compiled_package(&current_package_id)
-        {
-            let mut pkg = pkg.borrow_mut();
-            pkg.referenced_paths = referenced_paths;
-        }
+        let _ = (current_package_id, hir_package_id);
         return Ok(());
     }
 
