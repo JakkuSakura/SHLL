@@ -232,6 +232,7 @@ impl fp_core::backend::TargetBackend for JavaScriptBackend {
     fn capabilities(&self) -> fp_core::capabilities::LanguageCapabilities {
         fp_core::capabilities::LanguageCapabilities::NATIVE
     }
+}
 
 
 
@@ -259,7 +260,6 @@ impl JavaScriptBackend {
         }
         write_package_files(&self.config, &package.name, "js", files)
     }
-}
 }
 
 #[derive(Clone)]
