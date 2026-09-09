@@ -3606,7 +3606,15 @@ impl HirTypeChecker {
                     "trait definition `{def_id}` is not a concrete type"
                 )));
             }
-            _ => return Ok(self.error_ty(format!("definition `{def_id}` is not a type"))),
+            _ => {
+                tracing::debug!(
+                    ?def_id,
+                    ?path,
+                    item_kind = ?item.kind,
+                    "type path resolved to a non-type definition"
+                );
+                return Ok(self.error_ty(format!("definition `{def_id}` is not a type")));
+            }
         };
         // Generic arguments belong to their rustc-style path segment.  A
         // nominal type path may have module prefixes, so select the first
