@@ -1,5 +1,4 @@
 pub mod ast_to_hir;
-pub mod hir_materialization;
 pub mod hir_to_ast;
 pub mod hir_to_mir;
 pub mod lir_to_mir;

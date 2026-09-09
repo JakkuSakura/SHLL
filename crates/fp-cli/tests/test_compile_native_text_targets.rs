@@ -135,8 +135,7 @@ fn main() -> i64 {
     let mut args = base_args(input_file, output_file, "goasm", None);
     args.exec = true;
 
-    let err = compile_command(args, &CliConfig::default())
-        .unwrap_err();
+    let err = compile_command(args, &CliConfig::default()).unwrap_err();
     assert!(
         err.to_string()
             .contains("--exec is not supported for this target")
@@ -162,8 +161,7 @@ fn main() -> i64 {
     let mut args = base_args(input_file, output_file, "urcl", None);
     args.exec = true;
 
-    let err = compile_command(args, &CliConfig::default())
-        .unwrap_err();
+    let err = compile_command(args, &CliConfig::default()).unwrap_err();
     assert!(
         err.to_string()
             .contains("--exec is not supported for this target")

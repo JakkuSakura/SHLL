@@ -4,17 +4,13 @@
 //! module hosts the shared vocabulary and the single-expression hook used by
 //! that lowering pass.
 
-use crate::ast::{
-    Abi, AttrMeta, Attribute, Expr, ExprIntrinsicCall, ExprIntrinsicContainer, ExprKind, ExprKwArg,
-    ExprStruct, ExprStructural, ExprTry, File, FunctionParam, FunctionSignature, Ident, Item,
-    ItemDeclFunction, ItemKind, Ty, TySlot, TypeFunction, Value,
-};
+use crate::ast::{AttrMeta, Attribute, Expr, ExprKind, ExprKwArg, Item, Value};
 use crate::error::Result;
 use crate::span::Span;
 use std::collections::HashMap;
 
 /// Temporary framework representation of a source-language portable
-/// operation. It is consumed during target materialization and must never be
+/// operation. It is consumed while lifting typed HIR for a target and must never be
 /// stored in the persistent AST.
 #[derive(Clone, Debug)]
 pub struct PortableOpCall {
@@ -77,16 +73,6 @@ pub enum NormalizeOutcome<T> {
     Ignored(T),
     /// The strategy normalized this node and produced a replacement.
     Normalized(T),
-}
-
-/// Explicit result of a target materialization hook.
-///
-/// Unlike `Option`, this makes the control flow at a materialization boundary
-/// self-documenting: a target either leaves the node unchanged or replaces it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MaterializeOutcome<T> {
-    Unchanged,
-    Replaced(T),
 }
 
 impl<T> NormalizeOutcome<T> {
@@ -299,169 +285,13 @@ impl IntrinsicNormalizer for Box<dyn IntrinsicNormalizer> {
     }
 }
 
-/// Strategy interface for backend-specific intrinsic materialisation.
-pub trait IntrinsicMaterializer {
-    /// Target features that govern framework-level AST materialization.
-    fn capabilities(&self) -> crate::capabilities::LanguageCapabilities {
-        crate::capabilities::LanguageCapabilities::NATIVE
+/// Native-only intrinsic lowering hook. It runs after HIR has been type
+/// checked and lowered to MIR; source/transpile backends do not implement or
+/// invoke this trait.
+pub trait IntrinsicMaterializer: Send + Sync {
+    fn materialize_mir(&self, _unit: &mut crate::mir::MirCodeUnit) -> Result<()> {
+        Ok(())
     }
-
-    fn prepare_file(&self, _file: &mut File) {}
-
-    /// Rewrite a source type into the target language's AST type before
-    /// serialization. Targets should construct a real [`Ty`] shape here;
-    /// serializers must only print the resulting AST.
-    fn materialize_type_mapping(
-        &self,
-        _ty: &crate::ast::Ty,
-    ) -> Result<MaterializeOutcome<crate::ast::Ty>> {
-        Ok(MaterializeOutcome::Unchanged)
-    }
-
-    fn materialize_invoke_expression(
-        &self,
-        invoke: crate::ast::ExprInvoke,
-        expr_ty: &TySlot,
-    ) -> Result<MaterializeOutcome<Expr>> {
-        let _ = (invoke, expr_ty);
-        Ok(MaterializeOutcome::Unchanged)
-    }
-
-    fn materialize_select_expression(
-        &self,
-        select: crate::ast::ExprFieldAccess,
-        expr_ty: &TySlot,
-    ) -> Result<MaterializeOutcome<Expr>> {
-        let _ = (select, expr_ty);
-        Ok(MaterializeOutcome::Unchanged)
-    }
-
-    /// Lower an await wrapper after its operand has been materialized.
-    /// Targets with native suspension-point calls can replace it with the
-    /// already-materialized operand.
-
-    fn materialize_await_expression(
-        &self,
-        await_expr: crate::ast::ExprAwait,
-        expr_ty: &TySlot,
-    ) -> Result<MaterializeOutcome<Expr>> {
-        let _ = (await_expr, expr_ty);
-        Ok(MaterializeOutcome::Unchanged)
-    }
-
-    /// Lower a target-visible `try` expression after its children have been
-    /// materialized. Targets may replace the complete expression, or leave
-    /// the structured try node intact.
-    fn materialize_try_expression(
-        &self,
-        _try_expr: ExprTry,
-        _expr_ty: &TySlot,
-    ) -> Result<MaterializeOutcome<Expr>> {
-        Ok(MaterializeOutcome::Unchanged)
-    }
-
-    fn materialize_intrinsic_call(
-        &self,
-        call: ExprIntrinsicCall,
-        expr_ty: &TySlot,
-    ) -> Result<MaterializeOutcome<Expr>> {
-        let _ = (call, expr_ty);
-        Ok(MaterializeOutcome::Unchanged)
-    }
-
-    fn materialize_portable_operation(
-        &self,
-        call: PortableOpCall,
-        expr_ty: &TySlot,
-    ) -> Result<MaterializeOutcome<Expr>> {
-        let _ = (call, expr_ty);
-        Ok(MaterializeOutcome::Unchanged)
-    }
-
-    fn materialize_struct_expression(
-        &self,
-        struct_expr: ExprStruct,
-        expr_ty: &TySlot,
-    ) -> Result<MaterializeOutcome<Expr>> {
-        let _ = (struct_expr, expr_ty);
-        Ok(MaterializeOutcome::Unchanged)
-    }
-
-    fn materialize_structural_expression(
-        &self,
-        struct_expr: ExprStructural,
-        expr_ty: &TySlot,
-    ) -> Result<MaterializeOutcome<Expr>> {
-        let _ = (struct_expr, expr_ty);
-        Ok(MaterializeOutcome::Unchanged)
-    }
-
-    fn materialize_intrinsic_container(
-        &self,
-        container: ExprIntrinsicContainer,
-        expr_ty: &TySlot,
-    ) -> Result<MaterializeOutcome<Expr>> {
-        let _ = (container, expr_ty);
-        Ok(MaterializeOutcome::Unchanged)
-    }
-}
-
-fn build_function_decl_item(
-    name: &str,
-    mut params: Vec<FunctionParam>,
-    ret_ty: Ty,
-) -> ItemDeclFunction {
-    let name_ident = Ident::new(name);
-    for param in params.iter_mut() {
-        if param.ty_annotation.is_none() {
-            param.ty_annotation = Some(param.ty.clone());
-        }
-    }
-
-    let ty_annotation = Ty::Function(TypeFunction {
-        params: params.iter().map(|p| p.ty.clone()).collect(),
-        generics_params: Vec::new(),
-        ret_ty: Some(Box::new(ret_ty.clone())),
-    });
-
-    let sig = FunctionSignature {
-        name: Some(name_ident.clone()),
-        receiver: None,
-        params,
-        generics_params: Vec::new(),
-        is_const: false,
-        abi: Abi::Rust,
-        quote_kind: None,
-        ret_ty: Some(ret_ty),
-    };
-
-    ItemDeclFunction {
-        attrs: Vec::new(),
-        ty_annotation: Some(ty_annotation),
-        name: name_ident,
-        sig,
-        is_async: false,
-    }
-}
-
-/// Insert a function declaration if one with the same name does not already exist.
-pub fn make_function_decl(name: &str, params: Vec<FunctionParam>, ret_ty: Ty) -> ItemDeclFunction {
-    build_function_decl_item(name, params, ret_ty)
-}
-
-pub fn ensure_function_decl(file: &mut File, decl: ItemDeclFunction) {
-    let name = decl.name.clone();
-    let exists = file.items.iter().any(|item| match item.kind() {
-        ItemKind::DeclFunction(existing) if existing.name == name => true,
-        ItemKind::DefFunction(existing) if existing.name == name => true,
-        _ => false,
-    });
-
-    if exists {
-        return;
-    }
-
-    file.items.insert(0, Item::from(decl));
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -506,8 +336,6 @@ pub enum StdIntrinsic {
 
 pub mod calls;
 mod lang_intrinsic;
-pub mod materialize;
-
 pub use calls::{
     ArityShape, CallKind, IntrinsicKind, KnownClass, KnownPackage, PortableOp, ResultTypeRule,
 };
@@ -515,8 +343,4 @@ pub use lang_intrinsic::{
     LangIntrinsic, LangIntrinsicCapability, LangIntrinsicSpec, lang_intrinsic_call_kind,
     lang_intrinsic_capability, lang_intrinsic_for_lang_item, lang_intrinsic_lang_item,
     lang_intrinsic_spec,
-};
-pub use materialize::{
-    materialize_block, materialize_expr, materialize_file, materialize_invoke_target,
-    materialize_item, materialize_stmt, materialize_value,
 };

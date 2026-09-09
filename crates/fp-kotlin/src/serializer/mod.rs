@@ -1635,8 +1635,8 @@ fn kt_import_for(pkg: KnownPackage, path: &str) -> Option<String> {
         // `Path::from`/`new` renders as `Paths.get(...)` (see map_kt_path), so both
         // classes need to be in scope.
         StdPath => Some("java.nio.file.Path\njava.nio.file.Paths".into()),
-        // std::process::Command is materialized to RustKotlinRuntime.Command
-        // by KotlinMaterializer; no raw JVM constructor import is valid here.
+        // std::process::Command is lowered to RustKotlinRuntime.Command;
+        // no raw JVM constructor import is valid here.
         StdProcess => None,
         StdFs => Some("java.nio.file.Path".into()),
         StdIo => Some("java.io.*".into()),
@@ -1683,9 +1683,9 @@ impl KotlinEmitter {
             BlockStmt::Let(l) => {
                 let var_name = ident_from_pattern(&l.pat);
                 let mut type_ann = extract_type_annotation(&l.pat, self);
-                // `resultUnwrap` is introduced by KotlinMaterializer and
+                // `resultUnwrap` is introduced by target operation lowering and
                 // changes the expression's target type from `Result<T>` to
-                // `T`. The Rust annotation belongs to the pre-materialized
+                // `T`. The Rust annotation belongs to the pre-lowered
                 // expression and is therefore no longer valid on the JVM
                 // value. Let Kotlin infer the adapter's concrete return type.
                 if l.init.as_ref().is_some_and(is_result_unwrap_expr) {
@@ -3045,28 +3045,6 @@ mod tests {
         assert!(rendered.contains("if (true) 1 else null"));
         assert!(!rendered.contains("thenSome"));
         assert!(!rendered.contains("RustKotlinRuntime"));
-    }
-
-    #[test]
-    fn internal_vec_helper_type_is_never_emitted_as_kotlin_type() {
-        use fp_core::intrinsics::IntrinsicMaterializer;
-        let emitter = KotlinEmitter::new();
-        let ty = crate::backend::kotlin_parameterized_ty("to_vec_in", Ty::ident(Ident::new("str")));
-        let mapped = crate::materialize::KotlinMaterializer
-            .materialize_type_mapping(&ty)
-            .expect("materialize helper type");
-        let fp_core::intrinsics::MaterializeOutcome::Replaced(mapped) = mapped else {
-            panic!("expected helper type replacement");
-        };
-        assert_eq!(emitter.kotlin_type_from_ty(&mapped), "MutableList<String>");
-        let split = crate::backend::kotlin_parameterized_ty("Split", Ty::ident(Ident::new("str")));
-        let mapped = crate::materialize::KotlinMaterializer
-            .materialize_type_mapping(&split)
-            .expect("materialize split type");
-        let fp_core::intrinsics::MaterializeOutcome::Replaced(mapped) = mapped else {
-            panic!("expected split type replacement");
-        };
-        assert_eq!(emitter.kotlin_type_from_ty(&mapped), "List<String>");
     }
 
     #[test]

@@ -194,13 +194,11 @@ impl AstToHirLowerer {
         let base_ast = ast::Expr::new(ast::ExprKind::Name(base_name));
         let base_expr = hir::Expr {
             hir_id: self.next_id(),
-            kind: hir::ExprKind::Path(
-                self.ast_expr_to_hir_path(
-                    &base_ast,
-                    PathResolutionScope::Value,
-                    ParamMode::Optional,
-                )?,
-            ),
+            kind: hir::ExprKind::Path(self.ast_expr_to_hir_path(
+                &base_ast,
+                PathResolutionScope::Value,
+                ParamMode::Optional,
+            )?),
             span: Span::new(self.current_file, 0, 0),
         };
 
@@ -407,13 +405,11 @@ impl AstToHirLowerer {
         let base_ast = ast::Expr::new(ast::ExprKind::Name(base_name));
         let base_expr = hir::Expr {
             hir_id: self.next_id(),
-            kind: hir::ExprKind::Path(
-                self.ast_expr_to_hir_path(
-                    &base_ast,
-                    PathResolutionScope::Value,
-                    ParamMode::Optional,
-                )?,
-            ),
+            kind: hir::ExprKind::Path(self.ast_expr_to_hir_path(
+                &base_ast,
+                PathResolutionScope::Value,
+                ParamMode::Optional,
+            )?),
             span: Span::new(self.current_file, 0, 0),
         };
 

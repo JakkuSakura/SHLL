@@ -50,8 +50,8 @@ pub(super) fn find_elf_sysv_main_offset(
     entry_address: u64,
     rip_symbols: &HashMap<u64, crate::binary::RipSymbol>,
 ) -> Option<usize> {
-    use ::capstone::Syntax;
-    use ::capstone::prelude::*;
+    use capstone::Syntax;
+    use capstone::prelude::*;
 
     let entry_offset = entry_address.checked_sub(text_address)?;
     let entry_offset = usize::try_from(entry_offset).ok()?;

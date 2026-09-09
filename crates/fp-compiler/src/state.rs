@@ -69,8 +69,6 @@ pub struct CompilerState {
     /// already-constructed backend (`TargetBackend::capabilities`) and
     /// sets it here before compiling (`set_backend_capabilities`).
     backend_capabilities: fp_core::capabilities::LanguageCapabilities,
-    pub(crate) intrinsic_materializer:
-        Option<std::sync::Arc<dyn fp_core::intrinsics::IntrinsicMaterializer>>,
     pub(crate) target_operations: Option<fp_core::lang::LangItemRegistry>,
     pub(crate) source_operations: Option<fp_core::lang::LangItemRegistry>,
     /// Selects bytecode lowering for comptime requests made during typing.
@@ -134,7 +132,6 @@ impl CompilerState {
             ast_program: workspace,
             data_layout,
             backend_capabilities: fp_core::capabilities::LanguageCapabilities::NATIVE,
-            intrinsic_materializer: None,
             target_operations: None,
             source_operations: None,
             bytecode_comptime: false,
@@ -324,19 +321,6 @@ impl CompilerState {
 
     pub fn backend_capabilities(&self) -> fp_core::capabilities::LanguageCapabilities {
         self.backend_capabilities
-    }
-
-    pub fn set_intrinsic_materializer(
-        &mut self,
-        materializer: Option<std::sync::Arc<dyn fp_core::intrinsics::IntrinsicMaterializer>>,
-    ) {
-        self.intrinsic_materializer = materializer;
-    }
-
-    pub fn intrinsic_materializer(
-        &self,
-    ) -> Option<std::sync::Arc<dyn fp_core::intrinsics::IntrinsicMaterializer>> {
-        self.intrinsic_materializer.clone()
     }
 
     pub fn set_target_operations(&mut self, operations: Option<fp_core::lang::LangItemRegistry>) {

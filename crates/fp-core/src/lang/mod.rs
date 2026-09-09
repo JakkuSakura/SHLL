@@ -231,8 +231,8 @@ pub fn collect_lang_items(file: &File) -> LangItemRegistry {
 /// Scans one already-loaded package item (as returned by a `PackageProvider`,
 /// with no enclosing `File`) for `#[intrinsic = "..."]`/`#[op(...)]` markers,
 /// same as `collect_lang_items` but for a single item rather than a whole
-/// file — lets a package-source-level pass (e.g. a native materializer's
-/// provider wrapper) accumulate one registry across every item a package
+/// file — lets a package-source-level provider wrapper accumulate one registry
+/// across every item a package
 /// yields, one at a time, before merging with `LangItemRegistry::extend`.
 pub fn collect_lang_items_from_item(item: &Item) -> LangItemRegistry {
     collect_lang_items_from_item_at_path(item, &[])

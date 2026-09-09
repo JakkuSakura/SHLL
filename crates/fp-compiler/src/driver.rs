@@ -11,6 +11,7 @@ use fp_interpret::LirInterpreter;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::{CompilerDriverError, CompilerState, ExecutorHandle};
 
@@ -104,6 +105,9 @@ pub struct CompilerDriver {
     /// walk promotes it to a root.
     completed_roots: HashSet<PackageId>,
     pub pipeline: PipelineMode,
+    /// Native-only MIR materialization hook. Transpile pipelines leave this
+    /// unset and never enter the MIR phase.
+    intrinsic_materializer: Option<Arc<dyn fp_core::intrinsics::IntrinsicMaterializer>>,
 }
 
 /// Controls how far the compiler pipeline runs.
@@ -165,7 +169,15 @@ impl CompilerDriver {
             compiled_packages: HashMap::new(),
             completed_roots: HashSet::new(),
             pipeline: PipelineMode::Native,
+            intrinsic_materializer: None,
         }
+    }
+
+    pub fn set_intrinsic_materializer(
+        &mut self,
+        materializer: Option<Arc<dyn fp_core::intrinsics::IntrinsicMaterializer>>,
+    ) {
+        self.intrinsic_materializer = materializer;
     }
 
     pub async fn compile_native(
@@ -930,6 +942,19 @@ impl CompilerDriver {
             )));
         }
         lowering.sync_layout_exports();
+
+        if let Some(materializer) = self.intrinsic_materializer.as_ref() {
+            let package = state.borrow_mut().mir_package_rc(&current_package_id);
+            let mut package = package.borrow_mut();
+            for unit in package.units.values_mut() {
+                materializer.materialize_mir(unit).map_err(|error| {
+                    CompilerDriverError::InternalCompilerError(error.to_string())
+                })?;
+            }
+            materializer
+                .materialize_mir(&mut package.runtime_support)
+                .map_err(|error| CompilerDriverError::InternalCompilerError(error.to_string()))?;
+        }
 
         // --- MIR -> LIR: per-`DefId`, lazy signature resolution, no
         // whole-program predeclare sweep — `MirToLirLowerer` reads

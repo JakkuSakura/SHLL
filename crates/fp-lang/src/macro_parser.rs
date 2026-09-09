@@ -1248,10 +1248,13 @@ mod tests {
         let items = parser.parse_items_ast(source).expect("parse source");
         let mut defs = HashMap::new();
         collect_macro_rules_defs_into(items.iter(), &mut defs);
-        let invocation = items.iter().find_map(|item| match item.kind() {
-            ItemKind::Macro(m) if m.declared_name.is_none() => Some(m.invocation.clone()),
-            _ => None,
-        }).expect("invocation");
+        let invocation = items
+            .iter()
+            .find_map(|item| match item.kind() {
+                ItemKind::Macro(m) if m.declared_name.is_none() => Some(m.invocation.clone()),
+                _ => None,
+            })
+            .expect("invocation");
         let expanded = expand_item_macro_invocation(&invocation, &defs);
         assert!(expanded.is_some());
     }

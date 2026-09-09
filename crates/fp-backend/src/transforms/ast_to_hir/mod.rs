@@ -2534,8 +2534,8 @@ impl AstToHirLowerer {
                             PathResolutionScope::Trait,
                             ParamMode::Explicit,
                         )
-                            .ok()
-                            .and_then(|path| path.into_path())
+                        .ok()
+                        .and_then(|path| path.into_path())
                     })
                     .collect::<Vec<_>>();
                 if dynamic_bounds.is_empty() {
@@ -2731,13 +2731,11 @@ impl AstToHirLowerer {
                     block.expr.kind(),
                     ast::ExprKind::Name(_) | ast::ExprKind::FieldAccess(_)
                 ) {
-                    if let Ok(path) =
-                        self.ast_expr_to_hir_path(
-                            block.expr.as_ref(),
-                            PathResolutionScope::Type,
-                            ParamMode::Explicit,
-                        )
-                    {
+                    if let Ok(path) = self.ast_expr_to_hir_path(
+                        block.expr.as_ref(),
+                        PathResolutionScope::Type,
+                        ParamMode::Explicit,
+                    ) {
                         return Ok(hir::TypeExpr::new(
                             self.next_id(),
                             hir::TypeExprKind::Path(path),
@@ -2826,13 +2824,11 @@ impl AstToHirLowerer {
                             return self.transform_type_to_hir(ty);
                         }
                         ast::Value::Expr(inner) => {
-                            if let Ok(path) =
-                                self.ast_expr_to_hir_path(
-                                    inner,
-                                    PathResolutionScope::Type,
-                                    ParamMode::Explicit,
-                                )
-                            {
+                            if let Ok(path) = self.ast_expr_to_hir_path(
+                                inner,
+                                PathResolutionScope::Type,
+                                ParamMode::Explicit,
+                            ) {
                                 return Ok(hir::TypeExpr::new(
                                     self.next_id(),
                                     hir::TypeExprKind::Path(path),
@@ -2872,11 +2868,9 @@ impl AstToHirLowerer {
                         ));
                     }
                 }
-                if let Ok(path) = self.ast_expr_to_hir_path(
-                    expr,
-                    PathResolutionScope::Type,
-                    ParamMode::Explicit,
-                ) {
+                if let Ok(path) =
+                    self.ast_expr_to_hir_path(expr, PathResolutionScope::Type, ParamMode::Explicit)
+                {
                     return Ok(hir::TypeExpr::new(
                         self.next_id(),
                         hir::TypeExprKind::Path(path),
@@ -3802,11 +3796,7 @@ fn lower_closures_in_items(
     Ok(pass.diagnostics)
 }
 
-fn insert_generated_item(
-    module: &mut ast::Module,
-    path: &[String],
-    item: ast::Item,
-) -> Result<()> {
+fn insert_generated_item(module: &mut ast::Module, path: &[String], item: ast::Item) -> Result<()> {
     let Some((segment, rest)) = path.split_first() else {
         module.items.insert(0, item);
         return Ok(());

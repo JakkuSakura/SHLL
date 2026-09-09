@@ -383,8 +383,8 @@ impl ClosureLowering {
             match item.kind_mut() {
                 ast::ItemKind::Module(module) => {
                     let previous_module = self.current_module_path.clone();
-                    self.current_module_path = previous_module
-                        .with_segment(module.name.as_str().to_owned());
+                    self.current_module_path =
+                        previous_module.with_segment(module.name.as_str().to_owned());
                     self.find_and_transform_functions(&mut module.items)?;
                     self.current_module_path = previous_module;
                 }
@@ -692,8 +692,8 @@ impl ClosureLowering {
             match item.kind_mut() {
                 ast::ItemKind::Module(module) => {
                     let previous_module = self.current_module_path.clone();
-                    self.current_module_path = previous_module
-                        .with_segment(module.name.as_str().to_owned());
+                    self.current_module_path =
+                        previous_module.with_segment(module.name.as_str().to_owned());
                     self.rewrite_usage(&mut module.items)?;
                     self.current_module_path = previous_module;
                 }

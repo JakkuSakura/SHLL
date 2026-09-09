@@ -29,9 +29,21 @@ pub struct BackendPlan {
 }
 
 impl BackendPlan {
-    pub const fn transpile() -> Self { Self { stage: BackendStage::Transpile } }
-    pub const fn native() -> Self { Self { stage: BackendStage::Native } }
-    pub const fn bytecode() -> Self { Self { stage: BackendStage::Bytecode } }
+    pub const fn transpile() -> Self {
+        Self {
+            stage: BackendStage::Transpile,
+        }
+    }
+    pub const fn native() -> Self {
+        Self {
+            stage: BackendStage::Native,
+        }
+    }
+    pub const fn bytecode() -> Self {
+        Self {
+            stage: BackendStage::Bytecode,
+        }
+    }
 }
 
 /// Shared compiler results handed to a backend at emission time. The handles
@@ -248,14 +260,6 @@ pub trait TargetBackend: Send + Sync {
     /// `LanguageCapabilities::NATIVE` — the conservative "nothing first-
     /// class" baseline — a handful, like Kotlin, return more).
     fn capabilities(&self) -> crate::capabilities::LanguageCapabilities;
-
-    /// Target-specific materializer used while lifting typed HIR into the
-    /// persistent AST. Portable operations must be consumed at that boundary.
-    fn intrinsic_materializer(
-        &self,
-    ) -> Option<std::sync::Arc<dyn crate::intrinsics::IntrinsicMaterializer>> {
-        None
-    }
 
     /// Attribute-derived operation declarations for this destination
     /// language.  HIR→AST uses these paths before invoking the semantic

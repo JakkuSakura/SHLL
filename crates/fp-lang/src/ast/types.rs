@@ -570,8 +570,7 @@ pub(crate) fn parse_simple_type(input: &mut &[Token]) -> ModalResult<Ty> {
     };
     if type_name == "type" {
         if let Some(ppath) = bare_path {
-            let Some(GenericArgs::AngleBracketed(args)) = ppath.segments[0].args.as_deref()
-            else {
+            let Some(GenericArgs::AngleBracketed(args)) = ppath.segments[0].args.as_deref() else {
                 return Ok(Ty::Type(TypeType {
                     span: Span::null(),
                     inner: None,

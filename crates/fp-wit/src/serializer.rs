@@ -163,17 +163,24 @@ impl WitBackend {
 }
 
 impl fp_core::backend::TargetBackend for WitBackend {
-    fn plan(&self) -> fp_core::backend::BackendPlan { fp_core::backend::BackendPlan::transpile() }
+    fn plan(&self) -> fp_core::backend::BackendPlan {
+        fp_core::backend::BackendPlan::transpile()
+    }
 
     fn emit(&self, context: &fp_core::backend::BackendContext) -> fp_core::error::Result<()> {
         for package_id in &context.emitted_packages {
-            let mir = context.mir_program.package(package_id).map(|package| {
-                let package = package.borrow();
-                let mut unit = fp_core::mir::MirCodeUnit::new();
-                unit.items.extend(package.items().cloned());
-                unit.bodies.extend(package.bodies().map(|(id, body)| (*id, body.clone())));
-                unit
-            }).unwrap_or_else(fp_core::mir::MirCodeUnit::new);
+            let mir = context
+                .mir_program
+                .package(package_id)
+                .map(|package| {
+                    let package = package.borrow();
+                    let mut unit = fp_core::mir::MirCodeUnit::new();
+                    unit.items.extend(package.items().cloned());
+                    unit.bodies
+                        .extend(package.bodies().map(|(id, body)| (*id, body.clone())));
+                    unit
+                })
+                .unwrap_or_else(fp_core::mir::MirCodeUnit::new);
             let lir = context.lir_program.merged_blob_for_package(package_id).ok();
             self.emit_package(context.ast_program.as_ref(), package_id, &mir, lir.as_ref())?;
         }
@@ -183,13 +190,9 @@ impl fp_core::backend::TargetBackend for WitBackend {
     fn capabilities(&self) -> fp_core::capabilities::LanguageCapabilities {
         fp_core::capabilities::LanguageCapabilities::NATIVE
     }
-
-
-
 }
 
 impl WitBackend {
-
     fn emit_package(
         &self,
         workspace: &fp_core::ast::program::AstProgram,
@@ -214,7 +217,6 @@ impl WitBackend {
         Ok(())
     }
 }
-
 
 fn collect_doc_strings(attrs: &[Attribute]) -> Vec<String> {
     let mut docs = Vec::new();

@@ -359,10 +359,7 @@ impl PathSegment {
     }
 
     pub fn from_ident(ident: Ident) -> Self {
-        Self {
-            ident,
-            args: None,
-        }
+        Self { ident, args: None }
     }
 
     pub fn as_str(&self) -> &str {
@@ -678,9 +675,7 @@ impl AssocItemConstraint {
     pub fn span(&self) -> Span {
         let payload = match &self.kind {
             AssocItemConstraintKind::Equality { term } => term.span(),
-            AssocItemConstraintKind::Bound { bounds } => {
-                Span::union(bounds.iter().map(Ty::span))
-            }
+            AssocItemConstraintKind::Bound { bounds } => Span::union(bounds.iter().map(Ty::span)),
         };
         let gen_args = self
             .gen_args

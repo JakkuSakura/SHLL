@@ -3,7 +3,6 @@ pub use llvm::{codegen, context, intrinsics};
 pub mod debug_info;
 pub mod linking;
 pub mod pretty;
-pub mod runtime;
 pub mod runtime_symbols;
 pub mod target;
 
@@ -308,17 +307,24 @@ pub struct LlvmBackend {
 }
 
 impl fp_core::backend::TargetBackend for LlvmBackend {
-    fn plan(&self) -> fp_core::backend::BackendPlan { fp_core::backend::BackendPlan::native() }
+    fn plan(&self) -> fp_core::backend::BackendPlan {
+        fp_core::backend::BackendPlan::native()
+    }
 
     fn emit(&self, context: &fp_core::backend::BackendContext) -> fp_core::error::Result<()> {
         for package_id in &context.emitted_packages {
-            let mir = context.mir_program.package(package_id).map(|package| {
-                let package = package.borrow();
-                let mut unit = fp_core::mir::MirCodeUnit::new();
-                unit.items.extend(package.items().cloned());
-                unit.bodies.extend(package.bodies().map(|(id, body)| (*id, body.clone())));
-                unit
-            }).unwrap_or_else(fp_core::mir::MirCodeUnit::new);
+            let mir = context
+                .mir_program
+                .package(package_id)
+                .map(|package| {
+                    let package = package.borrow();
+                    let mut unit = fp_core::mir::MirCodeUnit::new();
+                    unit.items.extend(package.items().cloned());
+                    unit.bodies
+                        .extend(package.bodies().map(|(id, body)| (*id, body.clone())));
+                    unit
+                })
+                .unwrap_or_else(fp_core::mir::MirCodeUnit::new);
             let lir = context.lir_program.merged_blob_for_package(package_id).ok();
             self.emit_package(context.ast_program.as_ref(), package_id, &mir, lir.as_ref())?;
         }
@@ -328,7 +334,6 @@ impl fp_core::backend::TargetBackend for LlvmBackend {
     fn capabilities(&self) -> fp_core::capabilities::LanguageCapabilities {
         fp_core::capabilities::LanguageCapabilities::NATIVE
     }
-
 
     fn exec(&self) -> Result<()> {
         if self.text_only {
@@ -352,12 +357,9 @@ impl fp_core::backend::TargetBackend for LlvmBackend {
         }
         Ok(())
     }
-
-
 }
 
 impl LlvmBackend {
-
     fn emit_package(
         &self,
         workspace: &fp_core::ast::program::AstProgram,
@@ -432,7 +434,6 @@ impl LlvmBackend {
         Ok(())
     }
 }
-
 
 fn link_llvm_ir_with_clang(
     llvm_ir_path: &Path,

@@ -83,8 +83,7 @@ async fn compile_rejects_cil_transpile_placeholder() {
     let mut args = base_args(input_file, output_file);
     args.source_language = Some("cil".to_string());
 
-    let err = compile_command(args, &CliConfig::default())
-        .unwrap_err();
+    let err = compile_command(args, &CliConfig::default()).unwrap_err();
     assert!(
         err.to_string()
             .contains("CIL binary input cannot be transpiled to native")

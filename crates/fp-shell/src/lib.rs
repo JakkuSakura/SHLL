@@ -13,7 +13,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use fp_core::backend::TargetBackend;
 use fp_core::capabilities::LanguageCapabilities;
 use fp_core::error::Result as CoreResult;
@@ -44,7 +44,7 @@ impl TargetBackend for ShellBackend {
     fn plan(&self) -> fp_core::backend::BackendPlan { fp_core::backend::BackendPlan::transpile() }
     fn emit(&self, context: &fp_core::backend::BackendContext) -> CoreResult<()> {
         for package_id in &context.emitted_packages {
-            let package = context.ast_program.package_source(package_id)?;
+            context.ast_program.package_source(package_id)?;
             self.emit_package(context.ast_program.as_ref(), package_id, &fp_core::mir::MirCodeUnit::new(), None)?;
         }
         self.write_workspace(context.ast_program.as_ref(), &context.hir_program.borrow())
@@ -52,11 +52,6 @@ impl TargetBackend for ShellBackend {
 
 
     fn capabilities(&self) -> LanguageCapabilities { LanguageCapabilities::NATIVE }
-
-    fn intrinsic_materializer(&self) -> Option<Arc<dyn fp_core::intrinsics::IntrinsicMaterializer>> {
-        let inventory = self.inventory.as_deref().map(load_inventory).transpose().ok().flatten();
-        Some(Arc::new(shell_materializer::ShellMaterializer::new(inventory)))
-    }
 
 
 
@@ -192,8 +187,8 @@ pub fn compile_source_with_options(
         items: lowered_items,
     };
     let materializer = shell_materializer::ShellMaterializer::new(options.inventory.clone());
-    let mut lowered = fp_core::intrinsics::materialize_file(lowered_file, &materializer)
-        .map_err(|err| ShellError::Lower(err.to_string()))?;
+    let mut lowered = lowered_file;
+    materializer.prepare_file(&mut lowered);
 
     // Re-insert pre-HIR items (HIR strips #[command] attrs, const-evaluates fn bodies)
     lowered

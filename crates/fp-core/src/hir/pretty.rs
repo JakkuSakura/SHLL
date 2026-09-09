@@ -3,13 +3,11 @@ use crate::pretty::{PrettyCtx, PrettyPrintable, escape_char, escape_string};
 use std::fmt::{self, Formatter};
 
 use super::{
-    AssocType, BinOp, Block, Body, Const, Enum, Expr, ExprKind, FormatArgRef, FormatTemplatePart,
-    AssocItemConstraint, ConstArg, ConstArgKind, Function, GenericArg, GenericArgs,
-    GenericArgsParentheses, Term,
-    GenericParamKind,
-    Generics, HirPackage, Impl,
-    ImplItemKind, Item, ItemKind, Lit, Pat, PatKind, Path, Query, Stmt, StmtKind, Struct, Trait,
-    TraitItemKind, TypeExpr, TypeExprKind, UnOp, Visibility,
+    AssocItemConstraint, AssocType, BinOp, Block, Body, Const, ConstArg, ConstArgKind, Enum, Expr,
+    ExprKind, FormatArgRef, FormatTemplatePart, Function, GenericArg, GenericArgs,
+    GenericArgsParentheses, GenericParamKind, Generics, HirPackage, Impl, ImplItemKind, Item,
+    ItemKind, Lit, Pat, PatKind, Path, Query, Stmt, StmtKind, Struct, Term, Trait, TraitItemKind,
+    TypeExpr, TypeExprKind, UnOp, Visibility,
 };
 
 fn query_statement_lines(ir: &crate::query::QueryIrDocument) -> Vec<String> {
@@ -980,36 +978,41 @@ fn fmt_path(path: &Path, ctx: &PrettyCtx<'_>) -> String {
                     GenericArg::Infer(_) => "_".to_owned(),
                 })
                 .collect::<Vec<_>>();
-            args.extend(generic_args.constraints.iter().map(|binding| match binding {
-                AssocItemConstraint {
-                    ident,
-                    gen_args,
-                    kind: crate::hir::AssocItemConstraintKind::Equality { term },
-                    ..
-                } => {
-                    format!(
-                        "{}{} = {}",
-                        ident,
-                        fmt_assoc_item_args(gen_args, ctx),
-                        fmt_term(term, ctx)
-                    )
-                }
-                AssocItemConstraint {
-                    ident,
-                    gen_args,
-                    kind: crate::hir::AssocItemConstraintKind::Bound { bounds },
-                    ..
-                } => format!(
-                    "{}{}: {}",
-                    ident,
-                    fmt_assoc_item_args(gen_args, ctx),
-                    bounds
-                        .iter()
-                        .map(|bound| fmt_type_expr(bound, ctx))
-                        .collect::<Vec<_>>()
-                        .join(" + ")
-                ),
-            }));
+            args.extend(
+                generic_args
+                    .constraints
+                    .iter()
+                    .map(|binding| match binding {
+                        AssocItemConstraint {
+                            ident,
+                            gen_args,
+                            kind: crate::hir::AssocItemConstraintKind::Equality { term },
+                            ..
+                        } => {
+                            format!(
+                                "{}{} = {}",
+                                ident,
+                                fmt_assoc_item_args(gen_args, ctx),
+                                fmt_term(term, ctx)
+                            )
+                        }
+                        AssocItemConstraint {
+                            ident,
+                            gen_args,
+                            kind: crate::hir::AssocItemConstraintKind::Bound { bounds },
+                            ..
+                        } => format!(
+                            "{}{}: {}",
+                            ident,
+                            fmt_assoc_item_args(gen_args, ctx),
+                            bounds
+                                .iter()
+                                .map(|bound| fmt_type_expr(bound, ctx))
+                                .collect::<Vec<_>>()
+                                .join(" + ")
+                        ),
+                    }),
+            );
             let args = args.join(", ");
             if matches!(
                 generic_args.parenthesized,
@@ -1126,7 +1129,10 @@ mod tests {
         );
         let path = QPath::qualified(
             qself,
-            Path::new(Res::Error, vec![path_segment("Trait"), path_segment("Item")]),
+            Path::new(
+                Res::Error,
+                vec![path_segment("Trait"), path_segment("Item")],
+            ),
         );
         let options = PrettyOptions::default();
         let ctx = PrettyCtx::new(&options);

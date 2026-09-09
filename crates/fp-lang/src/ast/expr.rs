@@ -262,9 +262,7 @@ fn parse_binary(input: &mut &[Token], file: FileId, min_prec: u8) -> ModalResult
     // can hand the parser a truncated token stream (for example an item
     // repetition ending at `}`); reject that boundary before descending into
     // the operand parser instead of recursively probing malformed input.
-    if input.is_empty()
-        || matches!(peek_symbol(input), Some("}" | ")" | "]" | ";" | ","))
-    {
+    if input.is_empty() || matches!(peek_symbol(input), Some("}" | ")" | "]" | ";" | ",")) {
         return Err(ErrMode::Backtrack(ContextError::new()));
     }
     let mut lhs = parse_cast(input, file)?;
@@ -289,9 +287,7 @@ fn parse_binary(input: &mut &[Token], file: FileId, min_prec: u8) -> ModalResult
 }
 
 fn parse_binary_no_struct(input: &mut &[Token], file: FileId, min_prec: u8) -> ModalResult<Expr> {
-    if input.is_empty()
-        || matches!(peek_symbol(input), Some("}" | ")" | "]" | ";" | ","))
-    {
+    if input.is_empty() || matches!(peek_symbol(input), Some("}" | ")" | "]" | ";" | ",")) {
         return Err(ErrMode::Backtrack(ContextError::new()));
     }
     let mut lhs = parse_cast_no_struct(input, file)?;
@@ -814,9 +810,7 @@ fn parse_qualified_path_expr(input: &mut &[Token], file: FileId) -> ModalResult<
                 // the qualified receiver type.  This is the same distinction
                 // rustc keeps in its AST and matters for diagnostics and
                 // round-tripping qualified paths.
-                path_span: trait_path
-                    .map(Path::span)
-                    .unwrap_or_else(Span::null),
+                path_span: trait_path.map(Path::span).unwrap_or_else(Span::null),
                 position,
             }),
             path: Path::with_span(path_span, prefix, segments),

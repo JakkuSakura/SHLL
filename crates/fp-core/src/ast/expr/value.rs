@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter};
 use std::hash::Hash;
 
 use crate::ast::{
-    BExpr, BPattern, BType, Expr, ExprBlock, ExprKind, Ident, ItemChunk, Name, GenericArgs,
+    BExpr, BPattern, BType, Expr, ExprBlock, ExprKind, GenericArgs, Ident, ItemChunk, Name,
     Pattern, Ty, Value, ValueFunction, get_threadlocal_serializer,
 };
 use crate::intrinsics::CallKind;

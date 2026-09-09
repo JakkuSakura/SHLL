@@ -7,9 +7,15 @@ pub mod config;
 pub mod container;
 pub mod emit;
 pub mod ffi;
-pub mod intrinsic_materializer;
 pub mod jit;
 pub mod libc;
+
+/// Native-only MIR intrinsic materialization hook. Intrinsics that need
+/// target-specific MIR rewriting belong here; transpile backends do not
+/// implement or invoke this trait.
+pub struct NativeIntrinsicMaterializer;
+
+impl fp_core::intrinsics::IntrinsicMaterializer for NativeIntrinsicMaterializer {}
 pub mod link;
 pub mod package;
 pub mod system_api;
@@ -24,7 +30,6 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub use crate::intrinsic_materializer::NativeIntrinsicMaterializer;
 pub use crate::jit::{
     HostScalar, JitEngine, JitModule, validate_host_program, validate_native_program,
 };
@@ -68,17 +73,24 @@ impl NativeEmitter {
 /// doesn't need a separate `BackendConfig` — the existing config already is
 /// the "where to write" state `TargetBackend`'s design calls for.
 impl fp_core::backend::TargetBackend for NativeEmitter {
-    fn plan(&self) -> fp_core::backend::BackendPlan { fp_core::backend::BackendPlan::native() }
+    fn plan(&self) -> fp_core::backend::BackendPlan {
+        fp_core::backend::BackendPlan::native()
+    }
 
     fn emit(&self, context: &fp_core::backend::BackendContext) -> fp_core::error::Result<()> {
         for package_id in &context.emitted_packages {
-            let mir = context.mir_program.package(package_id).map(|package| {
-                let package = package.borrow();
-                let mut unit = fp_core::mir::MirCodeUnit::new();
-                unit.items.extend(package.items().cloned());
-                unit.bodies.extend(package.bodies().map(|(id, body)| (*id, body.clone())));
-                unit
-            }).unwrap_or_else(fp_core::mir::MirCodeUnit::new);
+            let mir = context
+                .mir_program
+                .package(package_id)
+                .map(|package| {
+                    let package = package.borrow();
+                    let mut unit = fp_core::mir::MirCodeUnit::new();
+                    unit.items.extend(package.items().cloned());
+                    unit.bodies
+                        .extend(package.bodies().map(|(id, body)| (*id, body.clone())));
+                    unit
+                })
+                .unwrap_or_else(fp_core::mir::MirCodeUnit::new);
             let lir = context.lir_program.merged_blob_for_package(package_id).ok();
             self.emit_package(context.ast_program.as_ref(), package_id, &mir, lir.as_ref())?;
         }
@@ -88,7 +100,6 @@ impl fp_core::backend::TargetBackend for NativeEmitter {
     fn capabilities(&self) -> fp_core::capabilities::LanguageCapabilities {
         fp_core::capabilities::LanguageCapabilities::NATIVE
     }
-
 
     fn exec(&self) -> Result<()> {
         let path = &self.config.output_path;
@@ -103,12 +114,9 @@ impl fp_core::backend::TargetBackend for NativeEmitter {
         }
         Ok(())
     }
-
-
 }
 
 impl NativeEmitter {
-
     fn emit_package(
         &self,
         workspace: &fp_core::ast::program::AstProgram,
@@ -171,7 +179,6 @@ impl NativeEmitter {
         Ok(())
     }
 }
-
 
 /// One `NativeObjectPackageProvider::from_archive` member: either a
 /// recognized object lifted to `AsmProgram` (retargeted like any other

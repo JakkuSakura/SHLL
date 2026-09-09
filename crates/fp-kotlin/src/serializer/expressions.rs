@@ -666,11 +666,9 @@ impl KotlinEmitter {
                     }
                     // `OptionUnwrap`/`OptionSome`/`OptionNone`/`VecNew`/`AsRef`/
                     // `Iter`/`ToOwned`/`AsStr`/`Clone` never reach here:
-                    // `KotlinMaterializer::materialize_call` (run over the
-                    // lifted AST before serialization, see `compile_project`'s
-                    // phase 2 in `fp-cli`) already rewrites those into their
+                    // Target operation lowering already rewrites those into
                     // real Kotlin-shaped `Expr` upstream. The arms below stay
-                    // here rather than in the materializer because they render
+                    // here because they render
                     // straight to a Kotlin-specific string form
                     // (`?:`/`.toList()`/a string-template literal) that has no
                     // generic `ast::Expr` equivalent to return instead.
@@ -782,13 +780,13 @@ impl KotlinEmitter {
             }
             ExprKind::Await(a) => self.render_expr(&a.base),
 
-            // Semantic AST must be fully materialized before it reaches this
+            // Semantic AST must be fully lowered before it reaches this
             // syntax-only renderer.  Emitting a comment here used to turn an
             // unsupported expression into syntactically malformed Kotlin when
             // it was used as a call receiver.  Preserve the operation/type
             // boundary by failing the compilation instead.
             _ => Err(eyre::eyre!(
-                "Kotlin serializer received unmaterialized expression: {:?}",
+                "Kotlin serializer received unsupported expression: {:?}",
                 expr.kind()
             )),
         }
@@ -912,7 +910,7 @@ pub(super) fn map_kt_path(name: &str) -> String {
             }
             return kt_method;
         }
-        // The semantic type mapping has already happened in the materializer;
+        // The semantic type mapping has already happened during HIR lifting;
         // this renderer only retains the final source identifier for paths
         // that were not resolved to a target AST type.
         let kt_prefix = prefix.rsplit("::").next().unwrap_or(prefix).to_string();

@@ -585,12 +585,13 @@ fn run_compile_pipeline(
     driver
         .state
         .borrow_mut()
-        .set_intrinsic_materializer(backend.intrinsic_materializer());
-    driver
-        .state
-        .borrow_mut()
         .set_target_operations(backend.portable_operation_registry());
     let backend_plan = backend.plan();
+    if backend_plan.stage == fp_core::backend::BackendStage::Native {
+        driver.set_intrinsic_materializer(Some(std::sync::Arc::new(
+            fp_native::NativeIntrinsicMaterializer,
+        )));
+    }
     driver.pipeline = match backend_plan.stage {
         fp_core::backend::BackendStage::Transpile => fp_compiler::PipelineMode::Transpile,
         fp_core::backend::BackendStage::Native | fp_core::backend::BackendStage::Bytecode => {
@@ -629,10 +630,10 @@ fn run_compile_pipeline(
     let context = fp_core::backend::BackendContext {
         ast_program,
         hir_program,
-            mir_program,
-            lir_program,
-            source_operations,
-            emitted_packages: packages.clone(),
+        mir_program,
+        lir_program,
+        source_operations,
+        emitted_packages: packages.clone(),
     };
     backend
         .emit(&context)

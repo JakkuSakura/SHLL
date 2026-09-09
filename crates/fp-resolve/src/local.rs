@@ -138,10 +138,7 @@ impl LocalResolver {
                 .iter()
                 .cloned()
                 .map(|segment| {
-                    fp_core::ast::PathSegment::new(
-                        fp_core::ast::Ident::new(segment),
-                        None,
-                    )
+                    fp_core::ast::PathSegment::new(fp_core::ast::Ident::new(segment), None)
                 })
                 .collect(),
         );

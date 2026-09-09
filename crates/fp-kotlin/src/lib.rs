@@ -5,12 +5,10 @@
 
 pub mod backend;
 pub mod kt_parser;
-pub mod materialize;
 pub mod package;
 pub mod serializer;
 
 pub use backend::KotlinBackend;
-pub use materialize::KotlinMaterializer;
 pub use package::KotlinPackageProvider;
 pub use serializer::{
     KotlinSerializer, KotlinWorkspaceContext, collect_enum_field_names, collect_enum_variant_names,

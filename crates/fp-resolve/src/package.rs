@@ -1,21 +1,21 @@
-use super::worklist::ResolutionWorklist;
 use super::Resolver;
+use super::worklist::ResolutionWorklist;
+use fp_core::ast::Path;
 use fp_core::ast::package::PackageId;
 use fp_core::ast::path::{InPackagePath, PathPrefix};
-use fp_core::ast::Path;
 use fp_core::ast::program::AstProgram;
 use fp_core::cfg::CfgFilter;
 use fp_core::hir;
+use fp_core::hir::HirProgram;
+use fp_core::hir::Symbol;
 use fp_core::hir::resolve::{
     Binding, DeclarationOutcome, DeclarationRules, ModuleData, Namespace, ResolutionResult,
     ResolutionRules,
 };
-use fp_core::hir::HirProgram;
-use fp_core::hir::Symbol;
 use fp_core::span::Span;
 use std::cell::{Ref, RefCell, RefMut};
-use std::collections::VecDeque;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
@@ -104,10 +104,7 @@ impl InPackageResolver {
         {
             return;
         }
-        self.issues.push(ResolutionIssue {
-            message,
-            span,
-        });
+        self.issues.push(ResolutionIssue { message, span });
     }
 
     pub fn resolve_declared(
@@ -487,34 +484,28 @@ impl InPackageResolver {
                                     })
                                 })
                         }
-                        ResolutionResult::Found(path) => {
-                            match path.res {
-                                hir::Res::Def(def_id) => {
-                                    (directive.namespace == Namespace::Value)
-                                        .then(|| self.enum_variants.get(&def_id).cloned())
-                                        .flatten()
-                                        .or_else(|| {
-                                            self.hir_program.borrow().item(def_id).and_then(
-                                                |item| {
-                                                    let hir::ItemKind::Enum(definition) = item.kind else {
-                                                        return None;
-                                                    };
-                                                    (directive.namespace == Namespace::Value).then(|| {
-                                                        definition
-                                                            .variants
-                                                            .into_iter()
-                                                            .map(|variant| {
-                                                                (variant.name, hir::Res::Def(variant.def_id))
-                                                            })
-                                                            .collect::<Vec<_>>()
-                                                    })
-                                                },
-                                            )
+                        ResolutionResult::Found(path) => match path.res {
+                            hir::Res::Def(def_id) => (directive.namespace == Namespace::Value)
+                                .then(|| self.enum_variants.get(&def_id).cloned())
+                                .flatten()
+                                .or_else(|| {
+                                    self.hir_program.borrow().item(def_id).and_then(|item| {
+                                        let hir::ItemKind::Enum(definition) = item.kind else {
+                                            return None;
+                                        };
+                                        (directive.namespace == Namespace::Value).then(|| {
+                                            definition
+                                                .variants
+                                                .into_iter()
+                                                .map(|variant| {
+                                                    (variant.name, hir::Res::Def(variant.def_id))
+                                                })
+                                                .collect::<Vec<_>>()
+                                        })
                                     })
-                                }
-                                _ => None,
-                            }
-                        }
+                                }),
+                            _ => None,
+                        },
                         _ => None,
                     };
                     let Some(members) = members else {
@@ -533,11 +524,7 @@ impl InPackageResolver {
                                 directive.namespace,
                                 directive.span,
                             );
-                            let key = (
-                                directive.module.clone(),
-                                name.clone(),
-                                directive.namespace,
-                            );
+                            let key = (directive.module.clone(), name.clone(), directive.namespace);
                             match outcome {
                                 DeclarationOutcome::Inserted => {
                                     inserted = true;
@@ -551,7 +538,8 @@ impl InPackageResolver {
                                 {
                                     self.record_issue("ambiguous import", directive.span);
                                 }
-                                DeclarationOutcome::Conflict | DeclarationOutcome::IdenticalImport => {}
+                                DeclarationOutcome::Conflict
+                                | DeclarationOutcome::IdenticalImport => {}
                             }
                         }
                         made_progress |= inserted;

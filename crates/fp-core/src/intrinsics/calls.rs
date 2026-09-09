@@ -44,8 +44,8 @@ pub struct ArityShape {
     pub min_args: usize,
 }
 
-/// A resolved portable-op identity carried through HIR and target
-/// materialization. The declaration registry that recognizes an `#[op]`
+/// A resolved portable-op identity carried through HIR and target lifting.
+/// The declaration registry that recognizes an `#[op]`
 /// attribute constructs this value; the core intrinsic layer deliberately
 /// has no catalog of operations.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

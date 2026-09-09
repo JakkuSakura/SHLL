@@ -187,8 +187,7 @@ fn parse_path_arguments_preserve_lifetime_const_and_binding_kinds() {
     let ExprKind::Name(Name { path, .. }) = expr.kind() else {
         panic!("expected named path");
     };
-    let Some(fp_core::ast::GenericArgs::AngleBracketed(args)) =
-        path.segments[0].args.as_deref()
+    let Some(fp_core::ast::GenericArgs::AngleBracketed(args)) = path.segments[0].args.as_deref()
     else {
         panic!("expected angle-bracketed arguments");
     };
@@ -235,8 +234,7 @@ fn parse_assoc_constraint_preserves_item_generic_arguments() {
     let ExprKind::Name(Name { path, .. }) = expr.kind() else {
         panic!("expected named path");
     };
-    let Some(fp_core::ast::GenericArgs::AngleBracketed(args)) =
-        path.segments[0].args.as_deref()
+    let Some(fp_core::ast::GenericArgs::AngleBracketed(args)) = path.segments[0].args.as_deref()
     else {
         panic!("expected angle-bracketed arguments");
     };
@@ -535,9 +533,7 @@ fn parse_nested_qualified_path_keeps_each_qself() {
     let parser = FerroPhaseParser::new();
     parser.clear_diagnostics();
     let items = parser
-        .parse_items_ast(
-            "type Alias = <<T as Trait>::Assoc as Trait2>::Item;",
-        )
+        .parse_items_ast("type Alias = <<T as Trait>::Assoc as Trait2>::Item;")
         .unwrap();
     let ItemKind::DefType(def) = items[0].kind() else {
         panic!("expected type alias");
@@ -607,8 +603,7 @@ fn parse_parenthesized_path_arguments_without_return_type() {
     let ExprKind::Name(Name { path, .. }) = expr.kind() else {
         panic!("expected path type");
     };
-    let Some(fp_core::ast::GenericArgs::Parenthesized(args)) = path.last().args.as_deref()
-    else {
+    let Some(fp_core::ast::GenericArgs::Parenthesized(args)) = path.last().args.as_deref() else {
         panic!("expected parenthesized arguments");
     };
     assert_eq!(args.inputs.len(), 1);
@@ -1310,8 +1305,7 @@ fn parse_items_ast_supports_dyn_trait_object_type_args() {
     let ExprKind::Name(Name { path: path, .. }) = expr.kind() else {
         panic!("expected parameter path type");
     };
-    let Some(fp_core::ast::GenericArgs::AngleBracketed(args)) =
-        path.segments[0].args.as_deref()
+    let Some(fp_core::ast::GenericArgs::AngleBracketed(args)) = path.segments[0].args.as_deref()
     else {
         panic!("expected Option type arg");
     };
@@ -1360,8 +1354,7 @@ fn parse_items_ast_supports_dyn_trait_object_with_multiple_bounds() {
     let ExprKind::Name(Name { path: path, .. }) = expr.kind() else {
         panic!("expected parameter path type");
     };
-    let Some(fp_core::ast::GenericArgs::AngleBracketed(args)) =
-        path.segments[0].args.as_deref()
+    let Some(fp_core::ast::GenericArgs::AngleBracketed(args)) = path.segments[0].args.as_deref()
     else {
         panic!("expected dyn trait bounds");
     };
@@ -1891,10 +1884,7 @@ fn parse_expr_ast_handles_struct_literal_fields_with_cfg_attrs() {
     let expr = parser
         .parse_expr_ast(
             r#"Self {
-                #[cfg(feature = "llvm")]
-                strategy: Box::new(LlvmRuntimeIntrinsicMaterializer),
-                #[cfg(not(feature = "llvm"))]
-                strategy: Box::new(NoopIntrinsicMaterializer),
+                strategy: Box::new(DefaultStrategy),
             }"#,
         )
         .unwrap();

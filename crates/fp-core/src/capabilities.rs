@@ -18,8 +18,8 @@
 /// behavior via `LanguageCapabilities::NATIVE`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LanguageCapabilities {
-    /// The target provides a materializer for central portable operations
-    /// (`#[op(...)]` declarations) before its serializer runs.
+    /// The target provides declarations for central portable operations
+    /// (`#[op(...)]`) so HIR lifting can resolve them before serialization.
     pub portable_operations: bool,
     /// A closure literal can be emitted/lowered directly as the target's
     /// own lambda syntax, rather than needing defunctionalization

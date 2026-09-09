@@ -1,72 +1,22 @@
-use fp_core::Result;
 use fp_core::ast::{
-    BlockStmt, Expr, ExprBlock, ExprIntrinsicCall, ExprInvoke, ExprInvokeTarget, ExprKind, File,
-    FunctionSignature, Item, ItemKind, Name, Value,
+    BlockStmt, Expr, ExprBlock, ExprInvoke, ExprInvokeTarget, ExprKind, File, FunctionSignature,
+    Item, ItemKind,
 };
-use fp_core::intrinsics::{CallKind, IntrinsicMaterializer, MaterializeOutcome};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
 pub struct ShellMaterializer {
-    inventory: Option<File>,
     sigs: RefCell<Option<HashMap<String, FunctionSignature>>>,
 }
 
 impl ShellMaterializer {
-    pub fn new(inventory: Option<File>) -> Self {
+    pub fn new(_inventory: Option<File>) -> Self {
         Self {
-            inventory,
             sigs: RefCell::new(None),
         }
     }
 
-    fn host_transport_for(&self, host: &str) -> Option<String> {
-        if host == "localhost" {
-            return Some("local".into());
-        }
-        let file = self.inventory.as_ref()?;
-        let item = file.items.iter().find_map(|i| match i.kind() {
-            ItemKind::DefFunction(f) if f.name.as_str() == "inventory" => Some(f),
-            _ => None,
-        })?;
-        let hosts_expr = struct_field_from_block(&item.body, "hosts")?;
-        let map = match hosts_expr.kind() {
-            ExprKind::Value(v) => match v.as_ref() {
-                Value::Map(map) => Some(map),
-                _ => None,
-            },
-            _ => None,
-        }?;
-        let entry = map
-            .entries
-            .iter()
-            .find(|e| matches!(&e.key, Value::String(s) if s.value == host))?;
-        match &entry.value {
-            Value::Struct(s) => s.structural.fields.iter().find_map(|f| {
-                if f.name.as_str() == "transport" {
-                    match &f.value {
-                        Value::String(s) => Some(s.value.clone()),
-                        _ => None,
-                    }
-                } else {
-                    None
-                }
-            }),
-            Value::Map(map) => map.entries.iter().find_map(|e| match &e.key {
-                Value::String(s) if s.value == "transport" => match &e.value {
-                    Value::String(s) => Some(s.value.clone()),
-                    _ => None,
-                },
-                _ => None,
-            }),
-            _ => None,
-        }
-    }
-}
-
-impl ShellMaterializer {
-    fn prepare_file(&self, file: &mut File) {
-        // Scan signatures from the AST
+    pub fn prepare_file(&self, file: &mut File) {
         *self.sigs.borrow_mut() = Some(scan_all_signatures(file));
         if let Some(sigs) = self.sigs.borrow().as_ref() {
             for item in &mut file.items {
@@ -74,7 +24,6 @@ impl ShellMaterializer {
             }
         }
 
-        // Flatten main body to top-level Expr items
         let mut new_items = Vec::new();
         let mut i = 0;
         while i < file.items.len() {
@@ -93,143 +42,7 @@ impl ShellMaterializer {
         }
         file.items = new_items;
     }
-
-    fn lower_invoke(
-        &self,
-        invoke: &mut ExprInvoke,
-        _expr_ty: &fp_core::ast::TySlot,
-    ) -> Result<Option<Expr>> {
-        // Fill missing args from function signature (before mangling so sig lookup works)
-        if let Some(ref sigs) = *self.sigs.borrow() {
-            fill_args(invoke, sigs);
-        }
-
-        // Rewrite known shell calls to intrinsic calls (before mangling)
-        if let Some(expr) = try_rewrite_to_intrinsic(invoke) {
-            if let ExprKind::IntrinsicCall(mut call) = expr.into_parts().1 {
-                // Convert intrinsic call to final mangled invoke
-                return self.lower_intrinsic_call(&mut call, &None);
-            }
-        }
-
-        // Normalize invoke target to Function form with an Ident name
-        // (fp-bash only handles identifier targets, not paths)
-        let name = invoke_target_name(&invoke.target).unwrap_or_default();
-        let mangled = mangle_name(&name);
-        invoke.target = ExprInvokeTarget::Function(Name::ident(mangled));
-
-        Ok(None)
-    }
-
-    fn lower_intrinsic_call(
-        &self,
-        call: &mut ExprIntrinsicCall,
-        _expr_ty: &fp_core::ast::TySlot,
-    ) -> Result<Option<Expr>> {
-        match call.kind {
-            CallKind::ShellExec => {
-                let host = call.args.get(1).and_then(string_val);
-                let transport = host
-                    .as_deref()
-                    .and_then(|host| self.host_transport_for(host));
-                let suffix = match transport.as_deref() {
-                    Some("ssh") => "shell_ssh",
-                    Some("docker") => "shell_docker",
-                    Some("kubectl") => "shell_kubectl",
-                    Some("winrm") => "shell_winrm",
-                    Some("chroot") => "shell_chroot",
-                    Some("local") => "shell_local",
-                    Some(_) => "shell_local",
-                    None if host.is_none() => "shell",
-                    None => "shell_local",
-                };
-                Ok(Some(invoke_to(
-                    call.span,
-                    &mangle_name(&format!("std::ops::server::{suffix}")),
-                    &call.args,
-                    &call.kwargs,
-                )))
-            }
-            CallKind::ShellFileCopy => {
-                let host = call.args.get(2).and_then(string_val).unwrap_or_default();
-                let transport = self.host_transport_for(&host);
-                let suffix = match transport.as_deref() {
-                    Some("ssh") => "copy_ssh",
-                    Some("docker") => "copy_docker",
-                    Some("kubectl") => "copy_kubectl",
-                    Some("winrm") => "copy_winrm",
-                    Some("chroot") => "copy_chroot",
-                    _ => "copy_local",
-                };
-                Ok(Some(invoke_to(
-                    call.span,
-                    &mangle_name(&format!("std::ops::files::{suffix}")),
-                    &call.args,
-                    &call.kwargs,
-                )))
-            }
-            CallKind::ShellFileTemplate => {
-                let host = call.args.get(2).and_then(string_val).unwrap_or_default();
-                let transport = self.host_transport_for(&host);
-                let suffix = match transport.as_deref() {
-                    Some("ssh") => "template_ssh",
-                    Some("chroot") => "template_chroot",
-                    _ => "template_local",
-                };
-                Ok(Some(invoke_to(
-                    call.span,
-                    &mangle_name(&format!("std::ops::files::{suffix}")),
-                    &call.args,
-                    &call.kwargs,
-                )))
-            }
-            CallKind::ShellFileRsync => {
-                let host = call.args.get(2).and_then(string_val);
-                let transport = host
-                    .as_deref()
-                    .and_then(|host| self.host_transport_for(host));
-                let suffix = match transport.as_deref() {
-                    Some("chroot") => "rsync_chroot",
-                    _ => "rsync_remote",
-                };
-                Ok(Some(invoke_to(
-                    call.span,
-                    &mangle_name(&format!("std::ops::files::{suffix}")),
-                    &call.args,
-                    &call.kwargs,
-                )))
-            }
-            _ => Ok(None),
-        }
-    }
 }
-
-impl IntrinsicMaterializer for ShellMaterializer {
-    fn prepare_file(&self, file: &mut File) {
-        ShellMaterializer::prepare_file(self, file);
-    }
-
-    fn materialize_invoke_expression(
-        &self,
-        invoke: ExprInvoke,
-        ty: &fp_core::ast::TySlot,
-    ) -> Result<MaterializeOutcome<Expr>> {
-        Ok(self
-            .lower_invoke(&mut invoke.clone(), ty)?
-            .map_or(MaterializeOutcome::Unchanged, MaterializeOutcome::Replaced))
-    }
-
-    fn materialize_intrinsic_call(
-        &self,
-        call: ExprIntrinsicCall,
-        ty: &fp_core::ast::TySlot,
-    ) -> Result<MaterializeOutcome<Expr>> {
-        Ok(self
-            .lower_intrinsic_call(&mut call.clone(), ty)?
-            .map_or(MaterializeOutcome::Unchanged, MaterializeOutcome::Replaced))
-    }
-}
-
 fn inject_with_contexts_in_item(item: &mut Item, sigs: &HashMap<String, FunctionSignature>) {
     match item.kind_mut() {
         ItemKind::DefFunction(function) => {
@@ -468,93 +281,11 @@ fn inject_context_arg(
 
 // ── helpers ──
 
-fn invoke_to(
-    span: fp_core::span::Span,
-    name: &str,
-    args: &[Expr],
-    kwargs: &[fp_core::ast::ExprKwArg],
-) -> Expr {
-    Expr::new(ExprKind::Invoke(ExprInvoke {
-        span,
-        target: ExprInvokeTarget::Function(Name::ident(name)),
-        args: args.to_vec(),
-        kwargs: kwargs.to_vec(),
-    }))
-}
-
 fn push_main_body_from_block(block: &ExprBlock, out: &mut Vec<Item>) {
     for stmt in &block.stmts {
-        if let BlockStmt::Expr(e) = stmt {
-            out.push(Item::from(ItemKind::Expr(e.expr.as_ref().clone())));
+        if let BlockStmt::Expr(expr) = stmt {
+            out.push(Item::from(ItemKind::Expr(expr.expr.as_ref().clone())));
         }
-    }
-}
-
-fn fill_args(invoke: &mut ExprInvoke, sigs: &HashMap<String, FunctionSignature>) {
-    let name = invoke_target_name(&invoke.target).unwrap_or_default();
-    let Some(sig) = sigs.get(&name) else { return };
-    while invoke.args.len() < sig.params.len() {
-        let idx = invoke.args.len();
-        let param = &sig.params[idx];
-        // Try kwarg first
-        if let Some(kw) = invoke.kwargs.iter().find(|k| k.name == param.name.as_str()) {
-            invoke.args.push(kw.value.clone());
-            continue;
-        }
-        if param.is_context {
-            invoke
-                .args
-                .push(Expr::value(Value::string("localhost".into())));
-        } else if let Some(d) = &param.default {
-            invoke.args.push(Expr::value(d.clone()));
-        } else {
-            let val = match &param.ty {
-                fp_core::ast::Ty::Primitive(fp_core::ast::TypePrimitive::Bool) => {
-                    Value::bool(false)
-                }
-                fp_core::ast::Ty::Primitive(fp_core::ast::TypePrimitive::Int(_)) => Value::int(0),
-                _ => Value::string(String::new()),
-            };
-            invoke.args.push(Expr::value(val));
-        }
-    }
-}
-
-fn try_rewrite_to_intrinsic(invoke: &mut ExprInvoke) -> Option<Expr> {
-    let name = invoke_target_name(&invoke.target)?;
-    // Only rewrite unmangled names (the OUTPUT of lower_intrinsic_call is already mangled,
-    // so skip __fp_ prefixed names to avoid infinite recursion)
-    let kind = match name.as_str() {
-        "std::ops::server::shell" | "std::ops::server::shell_local" => CallKind::ShellExec,
-        "std::ops::files::copy" | "std::ops::files::copy_local" => CallKind::ShellFileCopy,
-        "std::ops::files::template" | "std::ops::files::template_local" => {
-            CallKind::ShellFileTemplate
-        }
-        "std::ops::files::rsync"
-        | "std::ops::files::rsync_local"
-        | "std::ops::files::rsync_remote" => CallKind::ShellFileRsync,
-        _ => {
-            if name.starts_with("__fp_") {
-                return None; // Already materialized, skip
-            }
-            return None;
-        }
-    };
-    Some(Expr::new(ExprKind::IntrinsicCall(ExprIntrinsicCall {
-        span: invoke.span,
-        kind,
-        args: std::mem::take(&mut invoke.args),
-        kwargs: std::mem::take(&mut invoke.kwargs),
-    })))
-}
-
-fn string_val(expr: &Expr) -> Option<String> {
-    match expr.kind() {
-        ExprKind::Value(v) => match v.as_ref() {
-            Value::String(s) => Some(s.value.clone()),
-            _ => None,
-        },
-        _ => None,
     }
 }
 
@@ -583,41 +314,6 @@ fn invoke_target_name(target: &ExprInvokeTarget) -> Option<String> {
             ),
             _ => None,
         },
-        _ => None,
-    }
-}
-
-fn mangle_name(name: &str) -> String {
-    if !name.contains("::") {
-        return name.to_string();
-    }
-    let mut out = String::from("__fp_");
-    for seg in name.split("::") {
-        if !out.ends_with('_') {
-            out.push('_');
-        }
-        for ch in seg.chars() {
-            if ch.is_alphanumeric() || ch == '_' {
-                out.push(ch);
-            } else {
-                out.push('_');
-            }
-        }
-    }
-    out.push('_');
-    out
-}
-
-fn struct_field_from_block(block: &ExprBlock, field: &str) -> Option<Expr> {
-    let expr = block.last_expr()?;
-    match expr.kind() {
-        ExprKind::Struct(s) => s.fields.iter().find_map(|f| {
-            if f.name.as_str() == field {
-                f.value.clone()
-            } else {
-                None
-            }
-        }),
         _ => None,
     }
 }

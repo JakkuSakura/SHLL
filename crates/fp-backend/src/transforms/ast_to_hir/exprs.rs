@@ -37,9 +37,7 @@ impl AstToHirLowerer {
             let span = self.create_span(1);
             let hir_id = self.next_id();
             let kind = self.error_placeholder_expr_kind(
-                format!(
-                    "macro expansion recursion limit ({MAX_MACRO_EXPANSION_DEPTH}) reached"
-                ),
+                format!("macro expansion recursion limit ({MAX_MACRO_EXPANSION_DEPTH}) reached"),
                 expr_span,
             );
             return Ok(hir::Expr { hir_id, span, kind });

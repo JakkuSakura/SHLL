@@ -529,9 +529,11 @@ impl HirToMirLowerer {
                 }
                 .into(),
             )),
-            hir::TypeExprKind::Path(path) if path.segments().len() == 1 => Some(
-                fp_core::ast::Ty::ident(fp_core::ast::Ident::new(path.segments()[0].ident.as_str())),
-            ),
+            hir::TypeExprKind::Path(path) if path.segments().len() == 1 => {
+                Some(fp_core::ast::Ty::ident(fp_core::ast::Ident::new(
+                    path.segments()[0].ident.as_str(),
+                )))
+            }
             _ => None,
         }
     }
@@ -2017,7 +2019,8 @@ impl HirToMirLowerer {
                                 }
                             }
                         }
-                    } else if let Some(name) = path.segments().last().map(|seg| seg.ident.as_str()) {
+                    } else if let Some(name) = path.segments().last().map(|seg| seg.ident.as_str())
+                    {
                         if let Some(actual_def_id) = actual_def_id {
                             matches_def = self
                                 .mir_package
@@ -3158,8 +3161,8 @@ impl HirToMirLowerer {
             return Vec::new();
         };
         let mut lowered = Vec::new();
-            for arg in &args.args {
-                match arg {
+        for arg in &args.args {
+            match arg {
                 hir::GenericArg::Lifetime(_) => {}
                 hir::GenericArg::Type(ty) => lowered.push(self.lower_type_expr(ty)),
                 hir::GenericArg::Const(_) => {
@@ -3171,9 +3174,7 @@ impl HirToMirLowerer {
                 // this type-only MIR helper, just like explicit const args.
                 hir::GenericArg::Infer(infer) => match infer.kind {
                     hir::InferArgKind::TypeOrConst => lowered.push(Ty {
-                        kind: TyKind::Infer(mir::ty::InferTy::FreshTy(
-                            infer.hir_id.local_id(),
-                        )),
+                        kind: TyKind::Infer(mir::ty::InferTy::FreshTy(infer.hir_id.local_id())),
                     }),
                     hir::InferArgKind::Const => {
                         self.emit_warning(span, "const generics are ignored during MIR lowering");

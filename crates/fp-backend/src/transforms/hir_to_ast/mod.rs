@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use fp_core::ast::path::PathPrefix;
 use fp_core::ast::package::AstPackage;
+use fp_core::ast::path::PathPrefix;
 use fp_core::ast::{
     self, BlockStmt, BlockStmtExpr, Expr, ExprArray, ExprAssign, ExprBinOp, ExprBlock, ExprBreak,
     ExprCast, ExprClosure, ExprContinue, ExprFieldAccess, ExprFor, ExprIf, ExprIndex,
@@ -17,7 +17,7 @@ use fp_core::ast::{
 use fp_core::error::Result;
 use fp_core::hir;
 use fp_core::hir::DefId;
-use fp_core::intrinsics::{IntrinsicMaterializer, PortableOpCall};
+use fp_core::intrinsics::PortableOpCall;
 use fp_core::ops::{BinOpKind, UnOpKind};
 use fp_core::span::Span;
 
@@ -139,12 +139,11 @@ pub struct HirToAstLifter<'a> {
     /// Controls whether lifting may recognize declaration-tagged portable
     /// operations. HIR always preserves ordinary calls; this is the single
     /// point where a target-facing AST consumes a portable operation through
-    /// the configured materializer.
+    /// the target operation converter.
     capabilities: fp_core::capabilities::LanguageCapabilities,
-    materializer: Option<std::sync::Arc<dyn IntrinsicMaterializer>>,
     /// Operation declarations from the destination language's standard
-    /// library.  A hit is lowered to an ordinary target AST call; only a miss
-    /// reaches the target materializer.
+    /// library. A hit is lowered to an ordinary target AST call; an unmapped
+    /// operation is rejected instead of falling back to source-name guessing.
     target_converter: Option<std::sync::Arc<PortableOpAstConverter>>,
     source_converter: Option<std::sync::Arc<PortableOpAstConverter>>,
     /// The source standard-library operation declarations. HIR identity is
@@ -175,7 +174,6 @@ impl<'a> HirToAstLifter<'a> {
             package,
             hir_program,
             capabilities: fp_core::capabilities::LanguageCapabilities::NATIVE,
-            materializer: None,
             target_converter: None,
             source_converter: None,
             scope_names: RefCell::new(Vec::new()),
@@ -188,14 +186,6 @@ impl<'a> HirToAstLifter<'a> {
         capabilities: fp_core::capabilities::LanguageCapabilities,
     ) -> Self {
         self.capabilities = capabilities;
-        self
-    }
-
-    pub fn with_materializer(
-        mut self,
-        materializer: std::sync::Arc<dyn IntrinsicMaterializer>,
-    ) -> Self {
-        self.materializer = Some(materializer);
         self
     }
 
@@ -240,7 +230,7 @@ impl<'a> HirToAstLifter<'a> {
             "source operation is available as common portable call"
         );
         // Source normalization has already produced this common operation;
-        // convert it to target AST before invoking the fallback materializer.
+        // convert it to target AST using the destination operation registry.
         if let Some(converter) = &self.target_converter {
             if let Some(expr) = converter.convert(call.clone(), &expr_ty) {
                 fp_core::tracing::info!(
@@ -251,37 +241,18 @@ impl<'a> HirToAstLifter<'a> {
             }
             fp_core::tracing::info!(
                 operation = call.op.name(),
-                "target operation mapping unavailable; trying materializer fallback"
+                "target operation mapping unavailable"
             );
         } else {
             fp_core::tracing::info!(
                 operation = call.op.name(),
-                "no target operation converter configured; trying materializer fallback"
+                "no target operation converter configured"
             );
         }
-        let Some(materializer) = &self.materializer else {
-            return Err(fp_core::error::Error::from(
-                "portable operation reached HIR-to-AST without a target materializer",
-            ));
-        };
-        match materializer.materialize_portable_operation(call.clone(), &expr_ty)? {
-            fp_core::intrinsics::MaterializeOutcome::Replaced(expr) => {
-                fp_core::tracing::info!(
-                    operation = call.op.name(),
-                    "materialized portable operation as fallback"
-                );
-                Ok(expr)
-            }
-            fp_core::intrinsics::MaterializeOutcome::Unchanged => {
-                fp_core::tracing::info!(
-                    operation = call.op.name(),
-                    "materializer left portable operation unchanged"
-                );
-                Err(fp_core::error::Error::from(
-                    "target materializer did not handle portable operation",
-                ))
-            }
-        }
+        Err(fp_core::error::Error::from(format!(
+            "portable operation `{}` has no destination operation mapping",
+            call.op.name()
+        )))
     }
 
     fn portable_op_for_def(&self, def_id: &hir::DefId) -> Option<fp_core::intrinsics::PortableOp> {
@@ -327,13 +298,10 @@ impl<'a> HirToAstLifter<'a> {
             .iter()
             .map(|segment| segment.as_str().to_string())
             .collect::<Vec<_>>();
-        let direct = self
-            .source_converter
-            .as_ref()
-            .and_then(|converter| {
-                let refs = segments.iter().map(String::as_str).collect::<Vec<_>>();
-                converter.convert_from_source_path(&refs)
-            });
+        let direct = self.source_converter.as_ref().and_then(|converter| {
+            let refs = segments.iter().map(String::as_str).collect::<Vec<_>>();
+            converter.convert_from_source_path(&refs)
+        });
         if direct.is_some() {
             return direct;
         }
@@ -342,15 +310,15 @@ impl<'a> HirToAstLifter<'a> {
         // source segment from the resolved path so `Result::Ok` and
         // `Option::Some` use the std-file `#[op(variant = ...)]` metadata.
         if let Some(segment) = path.segments.last() {
-            if segments.last().is_none_or(|last| last != segment.ident.as_str()) {
+            if segments
+                .last()
+                .is_none_or(|last| last != segment.ident.as_str())
+            {
                 segments.push(segment.ident.as_str().to_string());
-                return self
-                    .source_converter
-                    .as_ref()
-                    .and_then(|converter| {
-                        let refs = segments.iter().map(String::as_str).collect::<Vec<_>>();
-                        converter.convert_from_source_path(&refs)
-                    });
+                return self.source_converter.as_ref().and_then(|converter| {
+                    let refs = segments.iter().map(String::as_str).collect::<Vec<_>>();
+                    converter.convert_from_source_path(&refs)
+                });
             }
         }
         None
@@ -412,7 +380,6 @@ impl<'a> HirToAstLifter<'a> {
     /// Reconstruct a complete AST module from typed HIR. This is the backend
     /// transpilation boundary: no provider AST is reused or patched.
     pub fn lift_module(&self) -> Result<ast::Module> {
-
         let mut root = ast::Module {
             attrs: Vec::new(),
             name: Ident::new(""),
@@ -486,7 +453,7 @@ impl<'a> HirToAstLifter<'a> {
     /// body at all, and permanently falls back to that method's original,
     /// untyped, pre-typecheck source form (confirmed: this is why
     /// `Ok(...)`/`Some(...)` calls inside impl methods never reached
-    /// `KotlinMaterializer` — the typed HIR was real, but nothing ever
+    /// target operation lowering — the typed HIR was real, but nothing ever
     /// spliced it back in). This method fills that gap:
     /// each `Method` inside every `impl` block, keyed by its own `DefId`.
     ///
@@ -775,8 +742,12 @@ impl<'a> HirToAstLifter<'a> {
                 def_id: impl_item.def_id.clone(),
                 visibility: item.visibility.clone(),
                 kind: match &impl_item.kind {
-                    hir::ImplItemKind::Method(function) => hir::ItemKind::Function(function.clone()),
-                    hir::ImplItemKind::AssocConst(constant) => hir::ItemKind::Const(constant.clone()),
+                    hir::ImplItemKind::Method(function) => {
+                        hir::ItemKind::Function(function.clone())
+                    }
+                    hir::ImplItemKind::AssocConst(constant) => {
+                        hir::ItemKind::Const(constant.clone())
+                    }
                     hir::ImplItemKind::AssocType(_) => continue,
                 },
                 span: item.span,
@@ -790,7 +761,8 @@ impl<'a> HirToAstLifter<'a> {
             self_ty: *self_ty,
             generics_params: Vec::new(),
             items,
-        })).with_span(item.span))
+        }))
+        .with_span(item.span))
     }
 
     fn lift_signature(&self, sig: &hir::FunctionSig) -> Result<FunctionSignature> {
@@ -1272,7 +1244,7 @@ impl<'a> HirToAstLifter<'a> {
             // to an ordinary method-call chain; the existing generic
             // `Op(Iter)` promotion already reduces `.iter()` itself to a
             // no-op passthrough, same as `.as_ref()`/`.to_owned()` — see
-            // `kotlin_materializer.rs`), and the target's own serializer
+            // the operation registry), and the target's own serializer
             // renders its native `for`/`foreach` construct from whatever
             // `iter` expression results.
             hir::ExprKind::For(pat, iter, body) => Expr::new(ast::ExprKind::For(ExprFor {
@@ -1635,7 +1607,7 @@ impl<'a> HirToAstLifter<'a> {
             // Preserve them structurally rather than flattening them into a
             // source string: flattening drops arguments that do not have a
             // printable name (notably `()`), silently changing generic
-            // parameter order before a target backend can materialize it.
+            // parameter order before a target backend serializes it.
             hir::TypeExprKind::Path(path) => match self.inline_synthetic_struct_ty_qpath(path)? {
                 Some(ty) => ty,
                 None => Ty::expr(Expr::name(self.lift_qpath(path)?)),
@@ -2720,8 +2692,6 @@ mod tests {
     use std::rc::Rc;
     use std::sync::Arc;
 
-    struct TestMaterializer;
-
     fn test_operation(name: &str) -> fp_core::intrinsics::PortableOp {
         let mut registry = fp_core::lang::LangItemRegistry::default();
         registry.insert_op(name, ast::Path::plain(vec![ast::Ident::new(name)]));
@@ -3280,18 +3250,6 @@ mod tests {
         Ok(())
     }
 
-    impl IntrinsicMaterializer for TestMaterializer {
-        fn materialize_portable_operation(
-            &self,
-            call: PortableOpCall,
-            _ty: &ast::TySlot,
-        ) -> Result<fp_core::intrinsics::MaterializeOutcome<Expr>> {
-            Ok(fp_core::intrinsics::MaterializeOutcome::Replaced(
-                Expr::name(Name::ident(call.op.name().to_string())),
-            ))
-        }
-    }
-
     #[test]
     fn dependency_source_path_metadata_is_enough_for_lifting_type_names() {
         let root_id = hir::PackageId::new("root");
@@ -3395,8 +3353,7 @@ mod tests {
                 ..fp_core::capabilities::LanguageCapabilities::NATIVE
             })
             .with_source_operations(source_operations)
-            .with_target_operations(target_operations)
-            .with_materializer(Arc::new(TestMaterializer));
+            .with_target_operations(target_operations);
 
         let lifted = lifter.lift_expr(&call).expect("lift associated call");
         assert!(
@@ -3613,8 +3570,7 @@ mod tests {
                 portable_operations: true,
                 ..fp_core::capabilities::LanguageCapabilities::NATIVE
             })
-            .with_source_operations(registry)
-            .with_materializer(Arc::new(TestMaterializer));
+            .with_source_operations(registry);
 
         for (expr, operation) in [
             (&output_call, "command_output"),
@@ -3922,8 +3878,7 @@ mod tests {
                 portable_operations: true,
                 ..fp_core::capabilities::LanguageCapabilities::NATIVE
             })
-            .with_source_operations(source_operations)
-            .with_materializer(Arc::new(TestMaterializer));
+            .with_source_operations(source_operations);
 
         let lifted = lifter.lift_expr(&try_expr).expect("lift typed Result try");
         let ast::ExprKind::Name(ast::Name { path, .. }) = lifted.kind else {

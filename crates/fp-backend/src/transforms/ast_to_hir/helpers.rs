@@ -185,13 +185,9 @@ impl AstToHirLowerer {
                 continue;
             };
             match arg {
-                ast::GenericArg::Lifetime(name) => {
-                    hir_args.push(hir::GenericArg::Lifetime(hir::Lifetime::from_name(
-                        name.as_str(),
-                        self.next_id(),
-                        name.span,
-                    )))
-                }
+                ast::GenericArg::Lifetime(name) => hir_args.push(hir::GenericArg::Lifetime(
+                    hir::Lifetime::from_name(name.as_str(), self.next_id(), name.span),
+                )),
                 ast::GenericArg::Type(ty) => {
                     if matches!(ty.as_ref(), ast::Ty::Wildcard(_)) {
                         hir_args.push(hir::GenericArg::Infer(hir::InferArg {
@@ -1072,11 +1068,13 @@ impl AstToHirLowerer {
             // and is false for an empty argument list, so both `Trait<>`
             // and `Trait<Item = T>` keep omitted type arguments inferable in
             // optional-parameter mode.
-            Some(args) => matches!(args.parenthesized, hir::GenericArgsParentheses::No)
-                && args
-                    .args
-                    .iter()
-                    .all(|arg| matches!(arg, hir::GenericArg::Lifetime(_))),
+            Some(args) => {
+                matches!(args.parenthesized, hir::GenericArgsParentheses::No)
+                    && args
+                        .args
+                        .iter()
+                        .all(|arg| matches!(arg, hir::GenericArg::Lifetime(_)))
+            }
         }
     }
 }
