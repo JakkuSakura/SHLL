@@ -759,22 +759,9 @@ impl PackageProvider for RustExternalApiProvider {
     }
 
     fn cache_identity(&self, id: &PackageId) -> ProviderResult<String> {
-        let identity = match id.as_str() {
-            CORE_PACKAGE_NAME | ALLOC_PACKAGE_NAME | STD_PACKAGE_NAME | TEST_PACKAGE_NAME => {
-                embedded_source_identity(
-                    crate::embedded_std::root_dir(),
-                    crate::embedded_std::module_paths(),
-                    crate::embedded_std::read,
-                )
-            }
-            LIBC_PACKAGE_NAME => embedded_source_identity(
-                fp_lang::embedded_libc::root_dir(),
-                fp_lang::embedded_libc::module_paths(),
-                fp_lang::embedded_libc::read,
-            ),
-            _ => return Err(ProviderError::PackageNotFound(id.clone())),
-        };
-        Ok(format!("rust-std:{identity}"))
+        let source = Self::source_for(id)?;
+        let identity = fp_core::cache::digest_bytes(source.as_bytes());
+        Ok(format!("rust-external-api:{}:{identity}", id.as_str()))
     }
 }
 
@@ -1167,23 +1154,6 @@ fn is_cfg_test(attrs: &[Attribute]) -> bool {
     })
 }
 
-/// Parse every embedded real-std `.rs` file, skipping (with a warning) any
-/// that `RustFrontend` can't handle yet, rather than failing the whole load.
-fn embedded_source_identity(
-    root: PathBuf,
-    module_paths: &[&str],
-    read: fn(&Path) -> Option<&'static str>,
-) -> String {
-    let mut identity = Vec::new();
-    for module_path in module_paths {
-        identity.extend_from_slice(module_path.as_bytes());
-        if let Some(source) = read(&root.join(module_path)) {
-            identity.extend_from_slice(source.as_bytes());
-        }
-    }
-    fp_core::cache::digest_bytes(&identity)
-}
-
 fn load_real_std_subcrate(crate_name: &'static str) -> ProviderResult<AstPackage> {
     let package_id = PackageId::new(crate_name);
     let root = crate::embedded_std::root_dir();
@@ -1481,6 +1451,34 @@ mod provider_tests {
             .and_then(Path::parent)
             .expect("fp-rust is nested below the repository root")
             .to_path_buf()
+    }
+
+    #[test]
+    fn rust_workspace_metadata_exposes_registry_api_dependencies() {
+        let provider = RustPackageProvider::new(repository_root());
+        let metadata = provider
+            .load_package_metadata(&PackageId::new("skln-core"))
+            .expect("skln-core metadata");
+
+        assert!(metadata.metadata.dependencies.iter().any(|dependency| {
+            dependency.resolved_package_id == Some(PackageId::new("serde_json"))
+        }));
+    }
+
+    #[test]
+    fn composed_rust_workspace_resolves_registry_api_packages() {
+        let provider = fp_core::ast::package::provider::CompositeProvider::new(
+            vec![
+                Arc::new(RustStdProvider) as Arc<dyn PackageProvider>,
+                Arc::new(RustExternalApiProvider) as Arc<dyn PackageProvider>,
+            ],
+            Arc::new(RustPackageProvider::new(repository_root())),
+        );
+
+        let metadata = provider
+            .load_package_metadata(&PackageId::new("serde_json"))
+            .expect("composed provider should resolve serde_json");
+        assert_eq!(metadata.id, PackageId::new("serde_json"));
     }
 
     #[test]

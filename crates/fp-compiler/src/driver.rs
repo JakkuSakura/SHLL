@@ -867,15 +867,18 @@ impl CompilerDriver {
             }
             let typed_package = self.state.borrow().hir_package_rc(hir_package_id.clone())?;
             let typed_package = typed_package.borrow().clone();
-            self.state
+            if let Err(error) = self
+                .state
                 .borrow()
                 .cache()
                 .save(&hir_cache_key, &typed_package)
-                .map_err(|error| {
-                    CompilerDriverError::InternalCompilerError(format!(
-                        "failed to save HIR cache for {hir_package_id}: {error}"
-                    ))
-                })?;
+            {
+                tracing::warn!(
+                    package = %hir_package_id,
+                    error = %error,
+                    "skipping non-cacheable HIR artifact"
+                );
+            }
         }
 
         // Transpile: lift typed HIR back to AST — this is what the Kotlin
