@@ -48,8 +48,5 @@ jobs:
       - name: Cargo test
         run: cargo test --workspace --all-targets
 
-      - name: Example snapshots
-        run: scripts/run_example_snapshots.sh
-
       - name: Example compile/exec
         run: scripts/run_examples_exec.sh

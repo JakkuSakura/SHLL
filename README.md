@@ -11,9 +11,9 @@ The project is designed for two related workflows:
   level `#[op = "..."]` calls may be lowered to ordinary `std` wrappers, while
   `#[intrinsic = "..."]` declarations provide compiler-pipeline primitives.
 - **Transpile mode** keeps the AST/source-level shape as high-level as possible
-  and prints the requested target language. `--target fp` prints FerroPhase
-  source; other target printers include TypeScript, JavaScript, Python, Go,
-  Zig, SYCL, Rust, and WIT when enabled.
+  and prints the requested target language. `--target rust` prints Rust
+  source; `--target fp` prints FerroPhase source through a runtime-registered
+  backend when one is available.
 
 The same semantic contract is intended to hold across AST, HIR, MIR, LIR,
 interpreters, bytecode, and compiled backends. A representation change must not
@@ -49,8 +49,6 @@ Print a source target through the same frontend, HIR, typing, and AST-lift
 pipeline (typing is always performed):
 
 ```bash
-fp compile src/main.fp --package demo --target fp --output normalized.fp
-fp compile src/main.fp --package demo --target typescript --output main.ts
 fp compile src/main.fp --package demo --target rust --output main.rs
 ```
 
@@ -99,16 +97,14 @@ The old `std::libc` compatibility package is retired.
 
 ## Frontends And Backends
 
-The workspace includes frontends for FerroPhase, C, C++, TypeScript,
-JavaScript, Python, Go, SQL, PRQL, WIT, JSON Schema, FlatBuffers, TOML, and
-other languages behind feature flags. C and C++ frontends use Clang and lower
-declarations into the shared AST; they are separate from the C-to-Ferro source
-printer.
+The workspace ships the FerroPhase frontend and a Rust frontend (`fp-rust`).
+The C/C++ frontend infrastructure in `fp-clang` remains available for
+embedding, but no other source-language crates are included.
 
 Available backend families include the interpreter, bytecode and text
-bytecode, native, LLVM, Cranelift, eBPF, JVM bytecode, Wasm, CIL, .NET, and
-source-target printers. Some backends remain experimental or require external
-toolchains.
+bytecode, native, LLVM, and Cranelift. The Rust source-target printer is
+provided by `fp-lang`; additional targets can be added at runtime through the
+target-backend registry.
 
 ## Documentation
 
@@ -119,7 +115,5 @@ toolchains.
 - [Packages](docs/Packages.md) - package graphs and dependencies
 - [Intrinsics](docs/Intrinsics.md) - operation and intrinsic normalization
 - [Language](docs/Language.md) - semantic contract
-- [Quality Assurance](docs/QualityAssurance.md) - validation strategy
 
-Examples are in `examples/`; package/workspace orchestration is provided by
-the `magnet` crate.
+Examples are in `examples/`.

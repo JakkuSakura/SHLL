@@ -54,8 +54,8 @@ terms consistently in docs, code, and diagnostics.
   package path.
 - **Package** - A dependency boundary that provides modules and optional
   bindings.
-- **Query Document** - A query frontend artefact, such as SQL or PRQL,
-  normalized into AST `NodeKind::Query`.
+- **Query Document** - A query frontend artefact normalized into AST
+  `NodeKind::Query`.
 - **Binding** - A generated language-specific facade that mirrors module paths
   and public APIs.
 - **Diagnostic** - Structured error, warning, or info emitted by compiler work

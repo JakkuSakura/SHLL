@@ -133,48 +133,6 @@ fn inspect_native_binary_prints_summary() {
         .stdout(predicate::str::contains("section_count:"));
 }
 
-#[tokio::test]
-async fn inspect_ebpf_object_prints_runtime_metadata_and_relocations() {
-    let temp_dir = TempDir::new().unwrap();
-    let input = temp_dir.path().join("main.fp");
-    let object = temp_dir.path().join("main.o");
-
-    fs::write(
-        &input,
-        r#"
-fn main() -> i32 {
-    println!("value={}", 7)
-    0
-}
-"#,
-    )
-    .unwrap();
-
-    compile_command(
-        compile_args_for_target(input, object.clone(), "ebpf"),
-        &CliConfig::default(),
-    )
-    .await
-    .unwrap();
-
-    fp_cmd()
-        .arg("inspect")
-        .arg(&object)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("format: native-object"))
-        .stdout(predicate::str::contains("architecture: Bpf"))
-        .stdout(predicate::str::contains("ebpf_metadata: present"))
-        .stdout(predicate::str::contains("ebpf_helper: id=3 name=println symbol=__fp_helper_println"))
-        .stdout(predicate::str::contains("ebpf_format: id=0 template=\"value=%lld\\n\""))
-        .stdout(predicate::str::contains(
-            "ebpf_call: function=main offset=40 helper_id=3 helper_symbol=__fp_helper_println format_id=0 arg_count=1",
-        ))
-        .stdout(predicate::str::contains(
-            "ebpf_relocation: section=prog/main offset=40 symbol=__fp_helper_println",
-        ));
-}
-
 #[test]
 fn inspect_unknown_file_falls_back_to_raw() {
     let temp_dir = TempDir::new().unwrap();

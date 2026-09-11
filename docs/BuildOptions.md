@@ -5,11 +5,11 @@ insert items or expressions into canonical AST during comptime work. This docume
 captures the build-block pattern using typed quotes and expression-driven
 splicing.
 
-## Magnet Build Options
+## Build Options
 
-Magnet accepts build options from `Magnet.toml` and merges CLI overrides last.
-Features are Cargo-compatible and defined under `[features]`. Enable them via
-`[build.options]` by setting `features = "feature_a,feature_b"`.
+Build options are read from the project manifest (`Magnet.toml`), with CLI
+overrides applied last. Features are Cargo-compatible and defined under
+`[features]`. Enable them via `[build]` by setting `features = [...]`.
 
 ```toml
 [features]

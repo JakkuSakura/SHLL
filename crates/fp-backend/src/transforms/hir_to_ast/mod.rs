@@ -134,8 +134,8 @@ pub struct HirToAstLifter<'a> {
     /// `ast::set_resolved_expr_types`) by `finish()`/the top-level lift
     /// entry points, for the few backend/AST-materializer reads that are
     /// genuine subexpression-level type queries with no annotation-shaped
-    /// AST position to promote the type into instead (e.g. fp-kotlin's
-    /// Vec/String/enum-receiver checks). Real annotation positions (a `let`
+    /// AST position to promote the type into instead (e.g. target-specific
+    /// receiver checks). Real annotation positions (a `let`
     /// binding, a closure param) get the resolved type promoted directly
     /// into a `PatternKind::Type` instead of recorded here.
     resolved_expr_types: RefCell<HashMap<ast::ExprId, Ty>>,
@@ -436,8 +436,8 @@ impl<'a> HirToAstLifter<'a> {
     /// paths of every OTHER definition it references — used to compute
     /// which imports a target backend actually needs for spliced-in
     /// content, instead of only ever echoing whatever `use` items
-    /// happened to already exist in the source file (`fp-kotlin`'s
-    /// `emit_import`). Deliberately just facts (fully-qualified paths),
+    /// happened to already exist in the source file (a target's own
+    /// import emitter). Deliberately just facts (fully-qualified paths),
     /// not a target-specific "is this external" classification — that
     /// judgment belongs in each backend, not here.
     pub fn referenced_paths_by_path(&self) -> HashMap<hir::DefPath, Vec<hir::DefPath>> {
@@ -651,7 +651,7 @@ impl<'a> HirToAstLifter<'a> {
         // inserts an ordinary `Param` named `self` at index 0) — recover
         // `ast::FunctionSignature`'s separate `receiver` field from it here,
         // rather than leaving it `None` unconditionally, since backends
-        // (`fp-kotlin`'s `collect_impl_methods`) key instance-vs-static
+        // key instance-vs-static
         // method classification directly off `receiver.is_none()`: losing
         // this turns every instance method into a mis-rendered "static"
         // one once real typed HIR→AST lifting is reached, rather than the
@@ -1184,7 +1184,7 @@ impl<'a> HirToAstLifter<'a> {
                 // itself has no typeck access and a closure param is a
                 // genuine annotation-shaped position (mirrors the `Local`
                 // lifting fix for `let` bindings). This is what backends
-                // needing per-parameter types (e.g. fp-kotlin's lambda
+                // needing per-parameter types (e.g. a lambda
                 // renderer) read via the ordinary `PatternKind::Type` case —
                 // an unresolved/never-recorded param (no hint reached the
                 // closure at typecheck time) simply keeps a bare pattern.
@@ -1365,7 +1365,7 @@ impl<'a> HirToAstLifter<'a> {
                 // `MutableList<_>`) isn't valid target-language syntax, so an
                 // annotation containing a hole must defer to the resolved
                 // type the same way a missing annotation does. Without this,
-                // backends (`fp-kotlin`) have to *guess* a var's type from the
+                // backends have to *guess* a var's type from the
                 // literal `null` initializer alone and can't.
                 let ty_ann = match &local.ty {
                     Some(ty) if !type_expr_contains_infer(ty) => Some(
@@ -1627,7 +1627,7 @@ impl<'a> HirToAstLifter<'a> {
     /// splice), so a plain by-name reference to it would dangle. Detected
     /// by its `__enum_payload_`/`__structural_value_` naming convention;
     /// inline its real fields directly (`Ty::Structural`, which
-    /// `fp-kotlin`'s `emit_enum` already expands inline for a struct-
+    /// target enum emitters already expand inline for a struct-
     /// shaped variant) instead of referencing it by a name nothing defines.
     fn inline_synthetic_struct_ty(&self, path: &hir::Path) -> Result<Option<Ty>> {
         let Some(hir::Res::Def(def_id)) = &path.res else {

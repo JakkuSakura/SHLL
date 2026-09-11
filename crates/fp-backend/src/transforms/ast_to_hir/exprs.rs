@@ -657,8 +657,8 @@ impl AstToHirLowerer {
             Value::UInt(u) => Ok(hir::ExprKind::Literal(hir::Lit::Integer(u.value as i64))),
             // `hir::Lit::Integer` is `i64`-only — no arbitrary-precision HIR
             // literal exists. Best-effort narrow (saturating on overflow,
-            // matching `fp-kotlin`'s own `Value::BigInt` rendering, which
-            // already accepts the same imprecision for values this large).
+            // matching the same imprecision already accepted for values this
+            // large).
             Value::BigInt(b) => {
                 let narrowed = b.value.to_string().parse::<i64>().unwrap_or(i64::MAX);
                 Ok(hir::ExprKind::Literal(hir::Lit::Integer(narrowed)))

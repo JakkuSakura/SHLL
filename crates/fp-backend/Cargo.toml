@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 fp-core = { path = "../fp-core" }
-fp-sql = { path = "../fp-sql" }
 fp-typing = { path = "../fp-typing" }
 serde = { version = "1", features = ["derive"] }
 dashmap = "5.4.0"

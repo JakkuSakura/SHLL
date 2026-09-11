@@ -19,7 +19,7 @@ pub use transforms as transformations;
 /// access), then `AstProgram::begin_package`. Deliberately does not
 /// use `fp-lang`'s disk-resolving `single_file_provider`: callers here
 /// (`roundtrip_items_via_hir`/`_dce`) receive already-fully-assembled
-/// `File`s (e.g. `fp-shell` splices in its embedded std tree directly,
+/// `File`s (e.g. a materializer splices in its embedded std tree directly,
 /// leaving behind `mod foo;` markers whose content already lives
 /// elsewhere in the tree) that must not be re-resolved against a real
 /// filesystem — `AstToHirLowerer::append_item` already walks nested `Module`

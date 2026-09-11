@@ -16,7 +16,6 @@ Current limitations:
 - Calls are direct-only; arguments follow the platform ABI (register + stack args) and results are materialized into stack slots (no register allocator yet).
 - Floating point, aggregates, and Phi nodes are not implemented yet.
 - Windows PE requires non-empty emitted text (no stub executable).
-- Text emitters live in separate crates: Go assembly in `fp-goasm`, URCL in `fp-urcl`.
 
 ## Native targets
 

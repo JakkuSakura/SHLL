@@ -12,9 +12,6 @@
 //! # Cross-compile a binary for a target triple
 //! fp compile hello.fp --target native --target-triple x86_64-unknown-linux-gnu
 //!
-//! # Initialize a new FerroPhase project
-//! magnet init my-project --template basic
-//!
 //! # Start an interactive REPL
 //! fp repl
 //! ```
@@ -44,7 +41,6 @@ while supporting multi-language interoperability and advanced compile-time compu
 EXAMPLES:
     fp interpret hello.fp                 # Interpret a FerroPhase file
     fp compile hello.fp --target rust     # Compile to Rust
-    magnet init my-project                # Create new project
     "#
 )]
 struct Cli {

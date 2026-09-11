@@ -3,11 +3,9 @@
 //! "externally registered": every target (including every one fp-cli
 //! itself ships, see `builtin_target_backends`) is just one more entry in
 //! this same registry, looked up the same way. This is what lets an
-//! embedding binary that lives outside `fp-cli`'s own Cargo workspace
-//! (e.g. `skln-fp-graph`'s `fp-graph` binary, which can't be a dependency
-//! of `fp-cli` without reversing the `FerroPhase` git submodule
-//! relationship) add a target or source language fp-cli has no crate
-//! dependency on, by registering one more factory before it calls
+//! embedding binary that lives outside `fp-cli`'s own Cargo workspace add a
+//! target or source language fp-cli has no crate dependency on, by
+//! registering one more factory before it calls
 //! `commands::compile::compile_command`.
 //!
 //! Registered targets are plain `fp_core::backend::TargetBackend` impls —
@@ -129,12 +127,7 @@ fn builtin_target_backends() -> Vec<(&'static str, TargetBackendFactory)> {
         factory(|config: BackendConfig| {
             // Own default: assembly text when asked to emit text, an
             // executable (`.exe` on Windows, `.out` elsewhere) when linking
-            // was requested, otherwise a relocatable object — losing, versus
-            // the object-vs-archive distinction fp-cli used to make by
-            // sniffing the *input*'s container kind, only for the rare case
-            // of an unlinked native re-emission with no explicit `-o<ext>`
-            // (both now default to `.o`); every explicit `-o` is untouched
-            // regardless.
+            // was requested, otherwise a relocatable object.
             let default_ext = if config.emit_text {
                 "s"
             } else if config.link_requested {
@@ -177,31 +170,6 @@ fn builtin_target_backends() -> Vec<(&'static str, TargetBackendFactory)> {
             .with_save_intermediates(config.save_intermediates);
             let emitter = fp_native::NativeEmitter::new(cfg);
             Ok(Box::new(emitter) as Box<dyn TargetBackend>)
-        }),
-    ));
-
-    entries.push((
-        "goasm",
-        factory(|config: BackendConfig| {
-            let output = fill_missing_extension(&config.workspace_root, "s");
-            let target = Some(fp_goasm::config::GoAsmTarget::resolve(
-                config.target_triple.as_deref(),
-            ));
-            let cfg = fp_goasm::config::GoAsmConfig::new(&output)
-                .with_target(target)
-                .with_target_triple(config.target_triple.clone());
-            Ok(Box::new(fp_goasm::GoAsmEmitter::new(cfg)) as Box<dyn TargetBackend>)
-        }),
-    ));
-
-    entries.push((
-        "urcl",
-        factory(|config: BackendConfig| {
-            let output = fill_missing_extension(&config.workspace_root, "urcl");
-            Ok(
-                Box::new(fp_urcl::UrclEmitter::new(fp_urcl::UrclConfig::new(&output)))
-                    as Box<dyn TargetBackend>,
-            )
         }),
     ));
 
@@ -274,211 +242,9 @@ fn builtin_target_backends() -> Vec<(&'static str, TargetBackendFactory)> {
     ));
 
     entries.push((
-        "jvm-bytecode",
-        factory(|config: BackendConfig| {
-            Ok(Box::new(fp_jvm::JvmBackend {
-                output: fill_missing_extension(&config.workspace_root, "class"),
-                save_intermediates: config.save_intermediates,
-            }) as Box<dyn TargetBackend>)
-        }),
-    ));
-
-    entries.push((
-        "wasm",
-        factory(|config: BackendConfig| {
-            Ok(Box::new(fp_wasm::WasmBackend {
-                output: fill_missing_extension(&config.workspace_root, "wasm"),
-            }) as Box<dyn TargetBackend>)
-        }),
-    ));
-
-    entries.push((
-        "ebpf",
-        factory(|config: BackendConfig| {
-            let default_ext = if config.exec_requested { "o" } else { "ebpf" };
-            Ok(Box::new(fp_ebpf::EbpfBackend {
-                output: fill_missing_extension(&config.workspace_root, default_ext),
-            }) as Box<dyn TargetBackend>)
-        }),
-    ));
-
-    entries.push((
-        "cil",
-        factory(|config: BackendConfig| {
-            Ok(Box::new(fp_cil::CilBackend {
-                output: fill_missing_extension(&config.workspace_root, "il"),
-                assemble: false,
-                save_intermediates: config.save_intermediates,
-            }) as Box<dyn TargetBackend>)
-        }),
-    ));
-
-    entries.push((
-        "dotnet",
-        factory(|config: BackendConfig| {
-            Ok(Box::new(fp_cil::CilBackend {
-                output: fill_missing_extension(&config.workspace_root, "exe"),
-                assemble: true,
-                save_intermediates: config.save_intermediates,
-            }) as Box<dyn TargetBackend>)
-        }),
-    ));
-
-    entries.push((
         "interpret",
         factory(|_config: BackendConfig| {
             Ok(Box::new(fp_interpret::InterpreterBackend) as Box<dyn TargetBackend>)
-        }),
-    ));
-
-    let ferrophase: TargetBackendFactory = factory(|config: BackendConfig| {
-        Ok(Box::new(fp_c::FerroPhaseAstBackend::new(config)) as Box<dyn TargetBackend>)
-    });
-    entries.push(("fp", ferrophase.clone()));
-    entries.push(("ferro", ferrophase.clone()));
-    entries.push(("ferrophase", ferrophase));
-
-    let typescript: TargetBackendFactory = factory(|config: BackendConfig| {
-        #[cfg(feature = "lang-typescript")]
-        {
-            Ok(Box::new(fp_typescript::TypeScriptBackend::new(config)) as Box<dyn TargetBackend>)
-        }
-        #[cfg(not(feature = "lang-typescript"))]
-        {
-            let _ = config;
-            Err(disabled_feature_error(
-                "lang-typescript",
-                "TypeScript package emission",
-            ))
-        }
-    });
-    entries.push(("typescript", typescript.clone()));
-    entries.push(("ts", typescript));
-
-    let javascript: TargetBackendFactory = factory(|config: BackendConfig| {
-        #[cfg(feature = "lang-typescript")]
-        {
-            Ok(Box::new(fp_typescript::JavaScriptBackend::new(config)) as Box<dyn TargetBackend>)
-        }
-        #[cfg(not(feature = "lang-typescript"))]
-        {
-            let _ = config;
-            Err(disabled_feature_error(
-                "lang-typescript",
-                "JavaScript package emission",
-            ))
-        }
-    });
-    entries.push(("javascript", javascript.clone()));
-    entries.push(("js", javascript));
-
-    let csharp: TargetBackendFactory = factory(|config: BackendConfig| {
-        #[cfg(feature = "lang-csharp")]
-        {
-            Ok(Box::new(fp_csharp::CSharpBackend::new(config)) as Box<dyn TargetBackend>)
-        }
-        #[cfg(not(feature = "lang-csharp"))]
-        {
-            let _ = config;
-            Err(disabled_feature_error("lang-csharp", "C# package emission"))
-        }
-    });
-    entries.push(("csharp", csharp.clone()));
-    entries.push(("cs", csharp.clone()));
-    entries.push(("c#", csharp));
-
-    let kotlin: TargetBackendFactory = factory(|config: BackendConfig| {
-        #[cfg(feature = "lang-kotlin")]
-        {
-            Ok(Box::new(fp_kotlin::KotlinBackend::new(config)) as Box<dyn TargetBackend>)
-        }
-        #[cfg(not(feature = "lang-kotlin"))]
-        {
-            let _ = config;
-            Err(disabled_feature_error(
-                "lang-kotlin",
-                "Kotlin package emission",
-            ))
-        }
-    });
-    entries.push(("kotlin", kotlin.clone()));
-    entries.push(("kt", kotlin));
-
-    let python: TargetBackendFactory = factory(|config: BackendConfig| {
-        #[cfg(feature = "lang-python")]
-        {
-            Ok(Box::new(fp_python::PythonBackend::new(config)) as Box<dyn TargetBackend>)
-        }
-        #[cfg(not(feature = "lang-python"))]
-        {
-            let _ = config;
-            Err(disabled_feature_error(
-                "lang-python",
-                "Python package emission",
-            ))
-        }
-    });
-    entries.push(("python", python.clone()));
-    entries.push(("py", python));
-
-    let golang: TargetBackendFactory = factory(|config: BackendConfig| {
-        #[cfg(feature = "lang-golang")]
-        {
-            Ok(Box::new(fp_golang::GoBackend::new(config)) as Box<dyn TargetBackend>)
-        }
-        #[cfg(not(feature = "lang-golang"))]
-        {
-            let _ = config;
-            Err(disabled_feature_error("lang-golang", "Go package emission"))
-        }
-    });
-    entries.push(("go", golang.clone()));
-    entries.push(("golang", golang));
-
-    let gdscript: TargetBackendFactory = factory(|config: BackendConfig| {
-        #[cfg(feature = "lang-godot")]
-        {
-            Ok(Box::new(fp_godot::GdscriptBackend::new(config)) as Box<dyn TargetBackend>)
-        }
-        #[cfg(not(feature = "lang-godot"))]
-        {
-            let _ = config;
-            Err(disabled_feature_error(
-                "lang-godot",
-                "GDScript package emission",
-            ))
-        }
-    });
-    entries.push(("gdscript", gdscript.clone()));
-    entries.push(("gd", gdscript));
-
-    entries.push((
-        "zig",
-        factory(|config: BackendConfig| {
-            #[cfg(feature = "lang-zig")]
-            {
-                Ok(Box::new(fp_zig::ZigBackend::new(config)) as Box<dyn TargetBackend>)
-            }
-            #[cfg(not(feature = "lang-zig"))]
-            {
-                let _ = config;
-                Err(disabled_feature_error("lang-zig", "Zig package emission"))
-            }
-        }),
-    ));
-
-    entries.push((
-        "sycl",
-        factory(|config: BackendConfig| {
-            #[cfg(feature = "lang-sycl")]
-            {
-                Ok(Box::new(fp_sycl::SyclBackend::new(config)) as Box<dyn TargetBackend>)
-            }
-            #[cfg(not(feature = "lang-sycl"))]
-            {
-                let _ = config;
-                Err(disabled_feature_error("lang-sycl", "SYCL package emission"))
-            }
         }),
     ));
 
@@ -487,28 +253,6 @@ fn builtin_target_backends() -> Vec<(&'static str, TargetBackendFactory)> {
     });
     entries.push(("rust", rust.clone()));
     entries.push(("rs", rust));
-
-    entries.push((
-        "wit",
-        factory(|config: BackendConfig| {
-            #[cfg(feature = "lang-wit")]
-            {
-                Ok(Box::new(fp_wit::WitBackend::new(config)) as Box<dyn TargetBackend>)
-            }
-            #[cfg(not(feature = "lang-wit"))]
-            {
-                let _ = config;
-                Err(disabled_feature_error("lang-wit", "WIT package emission"))
-            }
-        }),
-    ));
-
-    entries.push((
-        "c",
-        factory(|config: BackendConfig| {
-            Ok(Box::new(fp_c::codegen::CBackend::new(config)) as Box<dyn TargetBackend>)
-        }),
-    ));
 
     entries
 }

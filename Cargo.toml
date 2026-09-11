@@ -19,7 +19,4 @@ resolver = "2"
 members = [
     "crates/*",
 ]
-exclude = [
-    "crates/fp-shell-core",
-]
 default-members = ["crates/fp-cli"]

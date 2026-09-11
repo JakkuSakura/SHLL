@@ -3,8 +3,7 @@
 ## Overview
 
 The `fp-clang` crate provides the Clang parser and direct LLVM integration.
-The `fp-c` and `fp-cpp` crates expose compiler-facing C/C++ frontends. Those
-frontends lower declarations into the shared FerroPhase AST and then use the
+It lowers declarations into the shared FerroPhase AST and then uses the
 same HIR, typing, MIR, and LIR stages as FerroPhase source.
 
 ## Architecture
@@ -20,7 +19,7 @@ C/C++ Source → LanguageFrontend → shared AST → HIR → typing → MIR → 
 
 ### 1. Shared-AST FFI
 
-Use `fp-c::CFrontend` or the C++ parser when declarations need to participate
+Use the Clang parser when declarations need to participate
 in normal compiler resolution, typing, and target emission. This is the path
 used by `scripts/codegen_libc.sh`.
 

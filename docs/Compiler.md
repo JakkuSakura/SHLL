@@ -240,7 +240,7 @@ fallback.
 |------|------------------------|
 | Interpret | executable scopes and resulting values |
 | Bytecode / text bytecode | bytecode output derived from shared lowered scopes |
-| Native / LLVM / eBPF / JVM / CIL / .NET / Wasm | target output derived from shared lowered scopes |
+| Native / LLVM / Cranelift | target output derived from shared lowered scopes |
 | AST target emit | evaluated canonical AST plus target-specific surface printer output |
 
 The scheduler can stop as soon as the requested outputs are stable. A full

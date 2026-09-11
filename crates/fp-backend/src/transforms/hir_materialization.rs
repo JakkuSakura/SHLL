@@ -1,28 +1,15 @@
 //! Documents where each backend's "turn a recognized `#[op(...)]`/
 //! intrinsic into real target-language shape" stage lives. Mostly a
-//! reference module — the real logic for Kotlin/Shell already lives
-//! elsewhere and is unchanged by this note; Native's stage is a
-//! deliberate, documented pass-through no-op.
+//! reference module — per-target logic lives in each backend crate;
+//! Native's stage is a deliberate, documented pass-through no-op.
 //!
-//! ## Kotlin
+//! ## AST-level materializers
 //!
-//! Kotlin materializes at the **AST** level, via `KotlinMaterializer`
-//! (implements `fp_core::intrinsics::IntrinsicMaterializer`). It's wired
-//! up through `crate::languages::materializer::materializer_for_language`,
-//! invoked from `fp-cli`'s `compile_emit_target`/`compile_project` (see
-//! `crates/fp-cli/src/commands/compile.rs` — the single-file path calls it
-//! at line ~778, the multi-file `--target` path at line ~954). The AST it
-//! materializes over is produced by `HirToAstLifter` from the shared HIR,
-//! so by the time `KotlinMaterializer::materialize_call` sees an
-//! `ExprIntrinsicCall`, its `kind` is a genuine intrinsic kind —
-//! `CallKind::Op` was retired, so no promoted-op case reaches here anymore.
-//!
-//! ## Shell
-//!
-//! Same shape, different call site: `ShellMaterializer::new` is
-//! constructed directly in `crates/fp-shell/src/lib.rs` (~line 115) and
-//! consumed the same way, via the AST-level `IntrinsicMaterializer` trait.
-//! No logic change needed here either.
+//! Target backends that work at the **AST** level implement
+//! `fp_core::intrinsics::IntrinsicMaterializer` and are wired up through
+//! `crate::languages::materializer::materializer_for_language`, invoked
+//! from `fp-cli`'s compile path. The AST they materialize over is produced
+//! by `HirToAstLifter` from the shared HIR.
 //!
 //! ## Native
 //!

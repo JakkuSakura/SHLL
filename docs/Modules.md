@@ -45,16 +45,15 @@ pub trait PackageProvider {
 
 Each source language/layout has its own provider:
 
-- `fp_lang::cargo_provider::CargoWorkspaceProvider` — discovers a Cargo/Magnet
-  workspace's member crates and parses every source file in each with
-  `FerroFrontend` (the `.fp`-and-Rust-superset parser). This is what
-  `magnet transpile`/`fp compile <dir>` actually uses today for directory inputs.
+- `fp_lang::magnet_provider::MagnetWorkspaceProvider` — discovers a
+  `Magnet.toml` workspace's member packages and parses every source file in
+  each with `FerroFrontend`. This is what `fp compile <dir>` uses today for
+  directory inputs.
 - `fp_lang::provider::FerroPhaseProvider` — serves the embedded `std`/`libc`
   packages (baked into the `fp-lang` binary from `.fp` source at build time;
   see `fp-lang/build.rs` / `embedded_std.rs`).
-- `fp_rust::RustPackageProvider` — planned/in-progress provider specifically
-  for real `.rs` Cargo projects, with its own `std` backed by real rustc
-  source (see `docs/RustStd.md`). Not wired into language detection yet.
+- `fp_rust::RustPackageProvider` — provider for real `.rs` Cargo projects,
+  with its own `std` backed by real rustc source (see `docs/RustStd.md`).
 
 `WorkspaceContext::provider_for(package_id)` picks whichever registered
 provider's `list_packages()` includes the requested ID — there's no separate
@@ -100,8 +99,8 @@ pub struct PackageItem {
 item across every file in the package, each tagged with its originating
 module path. Normalization, (optional) typechecking, and serialization all
 operate over this flat list — grouped back by `path` where a pass needs
-per-file context (e.g. the Kotlin serializer's `serialize_package` groups by
-`path.segments.join("/")` to emit one `.kt` file per source module).
+per-file context (for example, source printers group by
+`path.segments.join("/")` to emit one file per source module).
 
 ### `pub mod` / `use` — a real language feature, separate concern
 

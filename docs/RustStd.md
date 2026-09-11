@@ -23,7 +23,7 @@ mechanism for its own hand-written `.fp` std).
 
 `fp-lang/src/std` is a small, hand-written `.fp` reimplementation of a few
 stdlib types (`Option`, `Result`, `Vec`, ...) with only the methods anyone
-happened to need so far. It's what `magnet transpile`/`fp compile` resolves
+happened to need so far. It's what `fp compile` resolves
 `std::*` paths against for `.fp`-dialect projects (via
 `fp_lang::provider::FerroPhaseProvider` → its own `embedded_std`).
 
@@ -37,7 +37,7 @@ use far more of `std` than that — `HashSet`, `Arc`, `std::sync::atomic::*`,
 
 - `fp_rust::RustPackageProvider` discovers real `.rs`/Cargo projects (via
   `fp_lang::project`'s Cargo/Magnet manifest walking, the same discovery
-  `CargoWorkspaceProvider` uses) and parses them with `fp_rust::RustFrontend`
+  `MagnetWorkspaceProvider` uses) and parses them with `fp_rust::RustFrontend`
   — a named Rust frontend distinct from `FerroFrontend`'s `.fp`-dialect
   identity, currently implemented by delegating to `FerroFrontend` internally
   since it's the only Rust-capable parser that exists, but with its own seam
@@ -57,7 +57,7 @@ use far more of `std` than that — `HashSet`, `Arc`, `std::sync::atomic::*`,
   (~64%)**. That test asserts a 50% floor as a regression canary, not a
   target — it's meant to catch a wholesale regression, not block gradual
   improvement to `FerroFrontend`'s grammar coverage.
-- Directory inputs (`magnet transpile`/`fp compile <dir>`, the case a whole
+- Directory inputs (`fp compile <dir>`, the case a whole
   project actually hits) now resolve their source language by manifest
   presence (`crate::languages::detect_project_language`): a real
   `Cargo.toml` → `"rust"` → `RustPackageProvider`/`RustStdProvider`; a

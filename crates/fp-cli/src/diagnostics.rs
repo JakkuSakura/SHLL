@@ -71,7 +71,7 @@ pub enum FerroPhaseError {
     #[error("Project configuration error")]
     #[diagnostic(
         code(ferrophase::config_error),
-        help("Check your configuration file or use magnet for package manifests")
+        help("Check your configuration file or the project manifest")
     )]
     ConfigError {
         message: String,

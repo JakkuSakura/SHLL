@@ -857,9 +857,13 @@ impl HirProgram {
         let crate_name = path.head()?.to_string();
         let package_id = self.packages_by_crate_name.get(&crate_name)?.clone();
         let mut package = self.packages.get(&package_id)?.clone();
-        let rooted = package.borrow().module_tree.module_exists(
-            &crate::ast::path::QualifiedPath::new(vec![crate_name.clone()]),
-        );
+        let rooted =
+            package
+                .borrow()
+                .module_tree
+                .module_exists(&crate::ast::path::QualifiedPath::new(vec![
+                    crate_name.clone(),
+                ]));
         let first = usize::from(rooted);
         let mut current = if rooted {
             crate::ast::path::QualifiedPath::new(vec![crate_name])

@@ -245,8 +245,8 @@ impl ClosureLowering {
     }
 
     /// Derives the real parameter type for a closure passed to one of the
-    /// handful of `Option`/`Result` methods whose Kotlin codegen needs a
-    /// literal closure (see `fp-kotlin`'s `map_or`/`map_err` special
+    /// handful of `Option`/`Result` methods whose target codegen needs a
+    /// literal closure (the `map_or`/`map_err` special
     /// cases) — `None` if the receiver's type isn't structurally
     /// resolvable, or the method isn't one of these.
     /// Returns `(param_ty, ret_ty)` for the closure argument of a
@@ -1734,7 +1734,7 @@ fn extract_ident(expr: &ast::Expr) -> Option<&ast::Ident> {
 /// into modules and impl blocks) — HIR carries no doc-comment concept, so
 /// backends that lower through it never see these; only callers that skip
 /// HIR-based typechecking and hand items to a renderer more directly
-/// (`fp-shell`'s roundtrip) need to strip them explicitly first.
+/// (a roundtrip renderer) need to strip them explicitly first.
 pub(crate) fn strip_doc_attrs_in_items(items: &mut [ast::Item]) {
     for item in items {
         strip_doc_attrs_in_item(item);

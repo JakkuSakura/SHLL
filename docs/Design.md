@@ -125,7 +125,7 @@ until the answer is available.
 | Mode | Requested final output | Shared path |
 |------|------------------------|-------------|
 | Interpret | executed LIR scope and resulting values | parse, normalize, type, satisfy comptime needs, lower to executable LIR |
-| Compile native / LLVM / eBPF / JVM / CIL / .NET / Wasm | target object, assembly, module, or binary | parse, normalize, type, satisfy comptime needs, scoped lowering, target emission |
+| Compile native / LLVM / Cranelift | target object, assembly, module, or binary | parse, normalize, type, satisfy comptime needs, scoped lowering, target emission |
 | Bytecode | serialized bytecode | parse, normalize, type, satisfy comptime needs, scoped lowering, bytecode emission |
 | AST target emit | evaluated canonical AST and printer output | parse, normalize, type, satisfy comptime needs, apply AST-producing answers |
 

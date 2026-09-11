@@ -3,7 +3,7 @@
 use crate::{CliError, Result, cli::CliConfig};
 use clap::{Args, ValueEnum};
 use object::read::archive::ArchiveFile;
-use object::{Architecture, FileKind, Object, ObjectSection, ObjectSymbol, RelocationTarget};
+use object::{FileKind, Object, ObjectSection, ObjectSymbol};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -81,71 +81,6 @@ fn render_object_summary(file: &object::File<'_>) {
         }
         println!("code_sections: {}", line);
     }
-}
-
-fn render_ebpf_object_summary(bytes: &[u8], file: &object::File<'_>) -> Result<()> {
-    let metadata = fp_ebpf::read_object_metadata(bytes).map_err(|err| {
-        CliError::InvalidInput(format!("failed to decode eBPF metadata: {}", err))
-    })?;
-
-    println!("ebpf_metadata: present");
-    println!("ebpf_helper_count: {}", metadata.helpers.len());
-    for helper in &metadata.helpers {
-        println!(
-            "ebpf_helper: id={} name={} symbol={}",
-            helper.id, helper.name, helper.symbol
-        );
-    }
-
-    println!("ebpf_format_count: {}", metadata.formats.len());
-    for format in &metadata.formats {
-        println!("ebpf_format: id={} template={:?}", format.id, format.format);
-    }
-
-    println!("ebpf_call_count: {}", metadata.callsites.len());
-    for callsite in &metadata.callsites {
-        println!(
-            "ebpf_call: function={} offset={} helper_id={} helper_symbol={} format_id={} arg_count={}",
-            callsite.function,
-            callsite.offset,
-            callsite.helper_id,
-            callsite.helper_symbol,
-            callsite
-                .format_id
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "none".to_string()),
-            callsite.arg_count
-        );
-    }
-
-    for section in file.sections() {
-        if section.kind() != object::SectionKind::Text {
-            continue;
-        }
-        let name = section.name().unwrap_or("<invalid>");
-        if !name.starts_with("prog/") {
-            continue;
-        }
-        for (offset, relocation) in section.relocations() {
-            let RelocationTarget::Symbol(symbol_index) = relocation.target() else {
-                continue;
-            };
-            let symbol = file
-                .symbol_by_index(symbol_index)
-                .map_err(|err| CliError::InvalidInput(err.to_string()))?;
-            println!(
-                "ebpf_relocation: section={} offset={} symbol={} kind={:?} encoding={:?} size={}",
-                name,
-                offset,
-                symbol.name().unwrap_or("<invalid>"),
-                relocation.kind(),
-                relocation.encoding(),
-                relocation.size()
-            );
-        }
-    }
-
-    Ok(())
 }
 
 fn elf_dynamic_tag_name(tag: i64) -> &'static str {
@@ -1561,9 +1496,6 @@ fn render_native(
         println!("is_little_endian: {}", file.is_little_endian());
         println!("entry: 0x{:x}", file.entry());
         render_object_summary(file);
-        if file.architecture() == Architecture::Bpf {
-            render_ebpf_object_summary(bytes, file)?;
-        }
     } else {
         println!("object_parse: unavailable");
     }

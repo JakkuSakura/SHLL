@@ -9,7 +9,6 @@ use fp_core::query::{
 };
 use fp_core::span::{FileId, Span};
 use fp_core::{ast, ast::ItemKind, ast::attrs_repr, cfg::TargetEnv, hir};
-use fp_sql::sql_ast::parse_sql_ast;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -1923,11 +1922,10 @@ impl AstToHirLowerer {
             ));
         }
         let statements = match &query.kind {
-            QueryKind::Sql(sql) => {
-                let source = sql.raw.clone().unwrap_or_else(|| sql.to_string());
-                parse_sql_ast(&source, sql.dialect.clone()).map_err(|err| {
-                    fp_core::error::Error::from(format!("failed to normalize SQL query: {err}"))
-                })?
+            QueryKind::Sql(_) => {
+                return Err(fp_core::error::Error::from(
+                    "SQL query lowering is not available in this build",
+                ));
             }
             QueryKind::Prql(_prql) => {
                 return Err(fp_core::error::Error::from("PRQL query has no semantic IR"));
@@ -2583,8 +2581,8 @@ impl AstToHirLowerer {
                 (hir::ItemKind::Const(konst), hir::Visibility::Private)
             }
             ItemKind::DefTrait(def_trait) => {
-                // Backends that model traits as real interfaces (e.g.
-                // fp-kotlin) still work off the original, pristine
+                // Backends that model traits as real interfaces
+                // still work off the original, pristine
                 // `ast::Item` instead of anything lifted from this HIR
                 // shape — recording `def_id` in `placeholder_defs`
                 // (mirrored into `hir::HirPackage::placeholder_defs`) lets

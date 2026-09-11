@@ -10,10 +10,6 @@ use tracing::{info, warn};
 
 use clap::Args;
 
-struct KotlinTranspileConfig {
-    packages: Vec<PackageId>,
-    package_prefix: String,
-}
 /// Arguments for the compile command (also used by Clap)
 #[derive(Debug, Clone, Args)]
 pub struct CompileArgs {
@@ -24,12 +20,10 @@ pub struct CompileArgs {
     #[arg(long = "package")]
     pub package: Option<String>,
 
-    /// Output target: a codegen backend (native, goasm, urcl, llvm-binary,
-    /// llvm-text, cranelift, ebpf, cil, dotnet, bytecode, text-bytecode,
-    /// jvm-bytecode, wasm, interpret) or a language target (fp, typescript,
-    /// javascript, python, go, gdscript, zig, sycl, rust, wit, ...) or a
-    /// runtime-registered target — all just `TargetBackend` impls looked up
-    /// by name, no separate protocol.
+    /// Output target: a codegen backend (native, llvm-binary,
+    /// llvm-text, cranelift, bytecode, text-bytecode, interpret) or a
+    /// language target (fp, rust) or a runtime-registered target — all just
+    /// `TargetBackend` impls looked up by name, no separate protocol.
     #[arg(short = 't', long = "target", default_value = "native")]
     pub target: String,
 
@@ -103,15 +97,15 @@ pub struct CompileArgs {
     #[arg(long)]
     pub save_intermediates: bool,
 
-    /// Override automatic source language detection (e.g. "typescript")
+    /// Override automatic source language detection (e.g. "rust")
     #[arg(long = "lang", alias = "language")]
     pub source_language: Option<String>,
 
-    /// Generate type definitions for TypeScript target.
+    /// Generate type definitions for the selected target.
     #[arg(long)]
     pub type_defs: bool,
 
-    /// Generate a single WIT world instead of per-package worlds.
+    /// Generate a single world instead of per-package worlds.
     #[arg(long)]
     pub single_world: bool,
 }
@@ -206,8 +200,8 @@ fn resolve_output_path(input: &Path, output: Option<&Path>) -> Result<PathBuf> {
 /// as its sole member (see `run_named_target`'s own directory/file split).
 /// Either way this always ends up compiling a workspace, just picking a
 /// different entry package depending on what `input` was — including a
-/// foreign artifact (native object/archive/asm text, goasm, URCL, JVM
-/// bytecode, CIL/.NET), which resolves like any other language through
+/// foreign artifact (native object/archive/asm text), which resolves like
+/// any other language through
 /// its own `PackageProvider` (`fp_native::NativeObjectPackageProvider`
 /// and friends), not a separate code path.
 async fn compile_workspace_entrypoint(
@@ -253,15 +247,8 @@ async fn run_named_target(
     target_name: &str,
     exec: bool,
 ) -> Result<()> {
-    if is_tsconfig(input) {
-        return Err(CliError::Compilation(
-            "fp compile --target requires source files, not tsconfig".to_string(),
-        ));
-    }
-
-    // The source project's own name — feeds both a synthetic root package
-    // id for typecheck (`root_id`, below) and, for Kotlin specifically,
-    // `settings.gradle.kts`'s `rootProject.name` (`BackendConfig::root_name`).
+    // The source project's own name — feeds a synthetic root package id for
+    // typecheck (`root_id`, below) and `BackendConfig::root_name`.
     let root_name = input
         .file_name()
         .and_then(|n| n.to_str())
@@ -271,11 +258,10 @@ async fn run_named_target(
     use crate::languages::detect_project_language;
     use crate::languages::package_provider_registry::provider_for_language;
 
-    let (provider, packages, lang, kotlin_package_prefix): (
+    let (provider, packages, lang): (
         std::sync::Arc<dyn fp_core::ast::package::provider::PackageProvider>,
         Vec<PackageId>,
         String,
-        Option<String>,
     ) = if input.is_dir() {
         let lang = args
             .source_language
@@ -293,18 +279,7 @@ async fn run_named_target(
         let discovered_packages = provider
             .list_packages()
             .map_err(|e| CliError::Compilation(e.to_string()))?;
-        let kotlin_config = if (lang == crate::languages::RUST || lang == "rs")
-            && target_name == "kotlin"
-            && args.package.is_none()
-            && input.join("Magnet.toml").is_file()
-        {
-            Some(kotlin_transpile_config(input, discovered_packages.clone())?)
-        } else {
-            None
-        };
-        let packages = if let Some(config) = &kotlin_config {
-            config.packages.clone()
-        } else if lang == crate::languages::RUST || lang == "rs" {
+        let packages = if lang == crate::languages::RUST || lang == "rs" {
             select_rust_directory_roots(
                 input,
                 provider.as_ref(),
@@ -314,38 +289,15 @@ async fn run_named_target(
         } else {
             discovered_packages
         };
-        (
-            provider,
-            packages,
-            lang,
-            kotlin_config.map(|config| config.package_prefix),
-        )
+        (provider, packages, lang)
     } else {
         let lang = compiler::resolve_source_language(input, args.source_language.as_deref())?;
         let (provider, package_id, _tag) = provider_and_package_for_input(input, &lang)?;
-        (provider, vec![package_id], lang, None)
+        (provider, vec![package_id], lang)
     };
 
-    // CIL text can be lifted into the compiler IR, but a compiled .NET
-    // binary has no disassembler/transpilation path. Keep this diagnostic
-    // tied to the declared input format and extension: test fixtures and
-    // partially invalid binaries do not necessarily carry a valid PE header.
-    if !input.is_dir()
-        && lang == crate::languages::CIL
-        && matches!(
-            input.extension().and_then(|extension| extension.to_str()),
-            Some(extension) if extension.eq_ignore_ascii_case("dll")
-                || extension.eq_ignore_ascii_case("exe")
-        )
-        && target_name == "native"
-    {
-        return Err(CliError::Compilation(
-            "binary .dll/.exe -> native transpilation is not implemented yet".to_string(),
-        ));
-    }
-
-    // A foreign-artifact-input compile (a native object file, or asm/goasm/
-    // URCL text, given directly as input) can legitimately just retarget
+    // A foreign-artifact-input compile (a native object file, or native asm
+    // text, given directly as input) can legitimately just retarget
     // it without linking (`--link`/`--exec` both absent) — every ordinary
     // source compile always wants a runnable executable regardless of
     // `--link`, matching today's behavior.
@@ -356,10 +308,6 @@ async fn run_named_target(
             || l == crate::languages::NATIVE_ASM
             || l == "x86_64-asm"
             || l == "aarch64-asm"
-            || l == crate::languages::GOASM
-            || l == crate::languages::URCL
-            || l == crate::languages::JVM_BYTECODE
-            || l == crate::languages::CIL
     );
     let link_requested = if is_foreign_artifact {
         args.link || args.exec
@@ -386,21 +334,13 @@ async fn run_named_target(
         .with_save_intermediates(args.save_intermediates)
         .with_type_defs(args.type_defs)
         .with_single_world(args.single_world)
-        .with_single_file_output(
-            if !input.is_dir()
-                && matches!(
-                    target_name,
-                    "typescript" | "ts" | "javascript" | "js" | "rust" | "gdscript"
-                )
-            {
-                Some(output.to_path_buf())
-            } else {
-                None
-            },
-        )
+        .with_single_file_output(if !input.is_dir() && matches!(target_name, "rust") {
+            Some(output.to_path_buf())
+        } else {
+            None
+        })
         .with_root_name(root_name.clone())
         .with_emitted_packages(packages.clone())
-        .with_kotlin_package_prefix(kotlin_package_prefix)
         .with_link_requested(link_requested)
         .with_emit_text(emit_text)
         .with_exec_requested(args.exec);
@@ -418,71 +358,6 @@ async fn run_named_target(
         exec,
     )
     .await
-}
-
-fn kotlin_transpile_config(
-    input: &Path,
-    discovered: Vec<PackageId>,
-) -> Result<KotlinTranspileConfig> {
-    let manifest = input.join("Magnet.toml");
-    let content = std::fs::read_to_string(&manifest)
-        .map_err(|error| CliError::Compilation(format!("read {}: {error}", manifest.display())))?;
-    let document = toml::from_str::<toml::Value>(&content)
-        .map_err(|error| CliError::Compilation(format!("parse {}: {error}", manifest.display())))?;
-    let kotlin = document
-        .get("transpile")
-        .and_then(|section| section.get("kotlin"))
-        .ok_or_else(|| {
-            CliError::Compilation(format!(
-                "{} must define [transpile.kotlin]",
-                manifest.display()
-            ))
-        })?;
-    let names = kotlin
-        .get("packages")
-        .and_then(toml::Value::as_array)
-        .ok_or_else(|| {
-            CliError::Compilation(format!(
-                "{} must define [transpile.kotlin].packages",
-                manifest.display()
-            ))
-        })?;
-    let discovered = discovered
-        .into_iter()
-        .map(|id| (id.as_str().to_string(), id))
-        .collect::<std::collections::HashMap<_, _>>();
-    let packages = names
-        .iter()
-        .map(|name| {
-            let name = name.as_str().ok_or_else(|| {
-                CliError::Compilation(format!(
-                    "{} contains a non-string Kotlin package selection",
-                    manifest.display()
-                ))
-            })?;
-            discovered.get(name).cloned().ok_or_else(|| {
-                CliError::Compilation(format!(
-                    "Kotlin package `{name}` in {} is not a Cargo workspace member",
-                    manifest.display()
-                ))
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let package_prefix = kotlin
-        .get("package-prefix")
-        .and_then(toml::Value::as_str)
-        .filter(|prefix| !prefix.is_empty())
-        .ok_or_else(|| {
-            CliError::Compilation(format!(
-                "{} must define transpile.kotlin.package-prefix",
-                manifest.display()
-            ))
-        })?
-        .to_string();
-    Ok(KotlinTranspileConfig {
-        packages,
-        package_prefix,
-    })
 }
 
 /// Select the package requested by a Rust directory input without changing
@@ -578,10 +453,9 @@ async fn run_compile_pipeline(
 
     // Phase 1: load + typecheck every package before
     // serializing any of them. A struct's fields can be defined in one
-    // package and mutated through a `&mut` reference in another (e.g.
-    // skln-core's `FileChange` mutated from skln-git's diff parser) — Kotlin
-    // needs to know which fields are ever mutated *anywhere in the workspace*
-    // to decide `val` vs `var` when emitting the struct, so that has to be
+    // package and mutated through a `&mut` reference in another — the
+    // serializer needs to know which fields are ever mutated *anywhere in
+    // the workspace* to emit the struct correctly, so that has to be
     // computed from every package's fully-processed AST, not just the one
     // currently being serialized.
     //
@@ -615,17 +489,7 @@ async fn run_compile_pipeline(
     // pipeline before compilation so the typed HIR is lowered exactly once.
     let needs_native_pipeline = matches!(
         target_name,
-        "native"
-            | "interpret"
-            | "llvm-text"
-            | "llvm-binary"
-            | "cranelift"
-            | "cil"
-            | "dotnet"
-            | "jvm-bytecode"
-            | "urcl"
-            | "ebpf"
-            | "goasm"
+        "native" | "interpret" | "llvm-text" | "llvm-binary" | "cranelift"
     );
     if needs_native_pipeline {
         session.driver().pipeline = fp_compiler::PipelineMode::Native;
@@ -658,8 +522,7 @@ async fn run_compile_pipeline(
     // Phase 2: serialize + write every package now that the workspace-wide
     // mutability set (and any other cross-package info) is complete.
     for package_id in &packages {
-        // Any op materialization the backend needs (e.g. Kotlin's
-        // portable-op -> Kotlin-idiom pass) happens inside
+        // Any op materialization the backend needs happens inside
         // emit_package_artifact itself, not here.
         let mir_module = {
             let state = session.driver().state.borrow();
@@ -730,16 +593,6 @@ fn backend_for_target(
     crate::languages::backend_registry::backend_for_target(name, config)
 }
 
-fn is_tsconfig(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .map(|name| {
-            let lower = name.to_ascii_lowercase();
-            lower == "tsconfig.json" || lower.ends_with(".tsconfig.json")
-        })
-        .unwrap_or(false)
-}
-
 #[cfg(test)]
 mod tests {
     use super::resolve_output_path;
@@ -747,7 +600,7 @@ mod tests {
     #[test]
     fn workspace_output_root_is_stable_after_the_directory_exists() {
         let input = std::env::temp_dir();
-        let output = input.join("fp-kotlin-output");
+        let output = input.join("fp-output");
         assert_eq!(
             resolve_output_path(&input, Some(&output)).expect("workspace output"),
             output

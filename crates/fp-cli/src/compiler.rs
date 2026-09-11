@@ -41,8 +41,8 @@ fn std_provider_for(language: &str) -> Arc<dyn fp_core::ast::package::provider::
     match language {
         l if l == languages::FERROPHASE => Arc::new(fp_lang::provider::FerroPhaseProvider),
         l if l == languages::RUST => Arc::new(fp_rust::RustStdProvider),
-        // A native object/archive/asm-text/goasm/URCL/JVM-bytecode/CIL
-        // package has no std/libc dependency at all.
+        // A native object/archive/asm-text package has no std/libc
+        // dependency at all.
         l if l == languages::NATIVE_OBJECT
             || l == languages::NATIVE_ARCHIVE
             || l == languages::NATIVE_ASM
@@ -51,11 +51,7 @@ fn std_provider_for(language: &str) -> Arc<dyn fp_core::ast::package::provider::
             || l == "asm-x86_64"
             || l == "asm-aarch64"
             || l == "x86asm"
-            || l == "aarch64asm"
-            || l == languages::GOASM
-            || l == languages::URCL
-            || l == languages::JVM_BYTECODE
-            || l == languages::CIL =>
+            || l == "aarch64asm" =>
         {
             Arc::new(fp_core::ast::package::provider::EmptyProvider)
         }
@@ -219,27 +215,10 @@ pub(crate) fn module_path_for_language(
                 &rel.display().to_string(),
             ))
         }
-        "typescript" | "ts" | "javascript" | "js" => {
-            module_path_for_typescript(package_root, input)
-        }
         other => Err(CliError::Compilation(format!(
             "no module-path estimator for source language: {other}"
         ))),
     }
-}
-
-#[cfg(feature = "lang-typescript")]
-fn module_path_for_typescript(package_root: &Path, input: &Path) -> Result<QualifiedPath> {
-    Ok(QualifiedPath::new(
-        fp_typescript::package::estimate_module_path(package_root, input),
-    ))
-}
-
-#[cfg(not(feature = "lang-typescript"))]
-fn module_path_for_typescript(_package_root: &Path, _input: &Path) -> Result<QualifiedPath> {
-    Err(CliError::Compilation(
-        "typescript support not compiled into this build".to_string(),
-    ))
 }
 
 /// A single compiler input: either a real on-disk file (the common case —
@@ -690,7 +669,7 @@ mod tests {
 
     #[test]
     fn languages_without_ferrophase_std_use_empty_provider() {
-        for language in ["c", "python", "typescript", "future-language"] {
+        for language in ["future-language"] {
             assert!(
                 std_provider_for(language)
                     .list_packages()

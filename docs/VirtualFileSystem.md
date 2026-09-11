@@ -205,8 +205,8 @@ Cargo adapters.
   trees or remote caches.
 - **Remote Providers**: implement `PackageProvider` backed by a registry API,
   caching manifests locally via the VFS.
-- **Language-Agnostic Module Providers**: add providers for FerroPhase modules,
-  TypeScript bindings, etc., all sharing the same `ModuleDescriptor` schema.
+- **Language-Agnostic Module Providers**: add providers for additional source
+  layouts, all sharing the same `ModuleDescriptor` schema.
 - **Incremental Update Stream**: expose diff events from providers so tooling
   can update UI state without a full reload.
 

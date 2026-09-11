@@ -78,8 +78,7 @@ pub struct HirPackage {
     /// while the real trait members live in `ItemKind::Trait`. Consumers
     /// that reconstruct AST from HIR (`HirToAstLifter`) must skip these
     /// rather than lift the placeholder itself, so backends that work from
-    /// the original source item (e.g. fp-kotlin modeling a trait as a real
-    /// Kotlin interface) see it unmodified instead of overwritten.
+    /// the original source item see it unmodified instead of overwritten.
     pub placeholder_defs: HashSet<DefId>,
     /// A definition's portable op, when its source declaration was tagged
     /// `#[op(func = "...")]` (free function) or `#[op(method = "...")]`

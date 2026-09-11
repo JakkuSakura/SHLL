@@ -24,7 +24,6 @@ Environmental constraints:
 
 Each release must enumerate:
 - Compiler outputs (executables, libraries, bytecode)
-- Language bindings (TS/JS, Python, etc.)
 - Debug symbols and metadata
 - Build record (inputs + options + hashes)
 

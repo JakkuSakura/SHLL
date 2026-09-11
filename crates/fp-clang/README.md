@@ -5,10 +5,9 @@ C/C++ frontend for the FerroPhase compiler using clang.
 ## Overview
 
 `fp-clang` owns the Clang parser, declaration AST, and direct LLVM integration
-for C and C++ source files. The public `fp-c` and `fp-cpp` crates build on this
-parser for the compiler-facing frontends: they lower C/C++ declarations into
-the shared FerroPhase AST so the normal HIR, typing, MIR, and LIR pipeline can
-consume them.
+for C and C++ source files. It exposes the Clang-backed declaration
+infrastructure to embedders; the lowered declarations feed the normal HIR,
+typing, MIR, and LIR pipeline.
 
 ## Features
 
@@ -86,11 +85,10 @@ let llvm_module = codegen.link_with_lir(&c_files, &lir_program, &options)?;
 
 ## Integration with FerroPhase
 
-The `fp-clang`, `fp-c`, and `fp-cpp` crates cover two related integration
-paths:
+`fp-clang` covers two related integration paths:
 
-1. **Shared-AST frontend**: use `fp-c::CFrontend` or `fp-cpp::CppParser` when
-   declarations must enter the common compiler pipeline.
+1. **Shared-AST frontend**: use the Clang parser when declarations must enter
+   the common compiler pipeline.
 2. **Direct LLVM integration**: use `fp-clang::ClangCodegen` when C/C++ source
    should be compiled directly to LLVM IR.
 

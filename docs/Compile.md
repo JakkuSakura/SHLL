@@ -19,11 +19,11 @@ $ fp compile --help
 
 ## Project Setup
 
-Create a new project using the CLI (this example uses the `basic` template):
+A project is a directory containing a `Magnet.toml` package manifest and its
+`src/` sources:
 
 ```bash
-$ magnet init my_project --template basic
-$ cd my_project
+$ mkdir my_project && cd my_project
 ```
 
 Project layout:
@@ -79,9 +79,9 @@ Artifacts (paths depend on your configuration):
 
 ## Building To Backends
 
-The same compile command can emit native binaries, LLVM, bytecode, JVM bytecode,
-Wasm, eBPF, CIL, and .NET outputs. Select a backend with `--backend`; select a
-source printer with `--target`.
+The same compile command can emit native binaries, LLVM, Cranelift, and
+bytecode, or run through the interpreter. Select a backend with `--backend`;
+select a source printer with `--target`.
 
 Common flags:
 - `--opt-level {0|1|2|3}` – Optimisation level (default: 2)
@@ -94,7 +94,7 @@ For example:
 ```bash
 $ fp compile src/main.fp --package demo --backend binary --output main
 $ fp compile src/main.fp --package demo --backend bytecode --output main.fbc
-$ fp compile src/main.fp --package demo --target fp --output normalized.fp
+$ fp compile src/main.fp --package demo --target rust --output main.rs
 ```
 
 ## Inspecting Intermediates
@@ -131,42 +131,6 @@ Current scope:
   reverse compiler path from machine code back into MIR/AST, so high-level
   decompilation is intentionally out of scope for now.
 
-## Textual Backends
-
-FerroPhase also supports text-oriented backend targets for inspection and experimentation:
-
-```bash
-$ fp compile src/main.fp --package demo --backend ebpf -o main.ebpf
-$ fp compile src/main.fp --package demo --backend cil -o main.il
-$ fp compile src/main.fp --package demo --backend dotnet -o main.exe
-```
-
-- `--backend ebpf` emits an experimental eBPF assembly sketch.
-- `--backend ebpf -o main.o` emits an ELF eBPF object suitable for execution.
-- `--backend cil` emits experimental .NET CIL in textual `.il` form.
-- `--backend dotnet` emits a PE-format .NET assembly by assembling generated CIL through `ilasm`.
-- `--backend dotnet` defaults to `.exe`; use a `.dll` output path to emit a library instead.
-- `--backend ebpf --exec` is supported through an external runtime executable exposed via `FP_EBPF_RUNTIME`.
-- `FP_EBPF_RUNTIME_ARGS` can be used for wrapper commands such as `cargo run -q -p fp-ebpf --bin fp-ebpf-runtime --`.
-- `--exec` is not currently supported for `cil` targets.
-- `--backend dotnet --exec` is supported when `ilasm` and a suitable runtime (`mono`, or `dotnet` as fallback for `.dll`) are available.
-
-## Running with .NET Backend
-
-Use `fp compile` with `--backend dotnet --exec` to compile and run immediately:
-
-```bash
-$ fp compile src/main.fp --package demo --backend dotnet --exec
-$ fp compile src/main.fp --package demo --backend dotnet --exec --output app.exe
-$ fp compile src/main.fp --package demo --backend dotnet --exec --output app.dll
-$ fp compile src/main.fp --package demo --backend dotnet --exec --release -O3
-```
-
-- `--backend dotnet --exec` compiles to a .NET assembly and executes it immediately.
-- `--output app.exe` keeps the executable artifact on disk before running it.
-- `--output app.dll` keeps a library-style assembly on disk; on Unix-like systems FerroPhase runs it via `mono`.
-- `fp compile --exec` also accepts core compile-mode knobs such as `--emitter`, `--native-target`, `--debug`, `--release`, and `-O/--opt-level`.
-
 ## Release Artifacts
 
 Production builds must emit the release artifacts defined in
@@ -190,5 +154,5 @@ The release record is required for reproducibility audits.
 ## Next Steps
 
 - Explore bytecode mode: `fp compile src/main.fp --package demo --backend bytecode`
-- Generate Rust or FerroPhase output with `fp compile --target`
+- Generate Rust output with `fp compile --target rust`
 - Extend the project with modules and custom targets; update `FerroPhase.toml` accordingly.

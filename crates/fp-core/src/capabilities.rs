@@ -6,9 +6,9 @@
 /// because the eventual target already has native syntax/stdlib support
 /// for it.
 ///
-/// Each target-emitting crate (`fp-kotlin`, `fp-cil`, ...) that wants
+/// Each target-emitting crate that wants
 /// anything other than the conservative default declares its own `const`
-/// of this type (see `fp-kotlin`'s `CAPABILITIES`) and returns it from its
+/// of this type and returns it from its
 /// `TargetBackend::capabilities` — `fp-cli` reads it off the
 /// already-constructed backend and threads it through to the compiler
 /// driver, rather than mapping a target name to a capabilities value

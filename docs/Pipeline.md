@@ -51,14 +51,10 @@ shared compiler design.
 
 Shipped frontends include:
 
-- `FerroFrontend` for FerroPhase/Rust syntax (`.fp`, `.rs`);
-- `CFrontend` and `CppParser` for Clang-backed C/C++ declarations;
-- `TypeScriptFrontend` for TypeScript/JavaScript families;
-- `WitFrontend` for WebAssembly Interface Types;
-- `SqlFrontend` for `.sql` query documents;
-- `PrqlFrontend` for `.prql` query documents;
-- `JsonSchemaFrontend` for validation schemas;
-- `FlatbuffersFrontend` for `.fbs` type IDL.
+- `FerroFrontend` for FerroPhase syntax (`.fp`);
+- `RustFrontend` for Rust sources (`.rs`);
+- `ClangParser`/`ClangModule` in `fp-clang`, the Clang-backed C/C++
+  declaration infrastructure available to embedders.
 
 Each frontend must document semantic degradation in
 `docs/semantic/Matrix.md` when its source language cannot preserve a FerroPhase
@@ -96,7 +92,7 @@ Modes request different final outputs:
 |------|--------------|
 | `run` / `eval` | executed LIR result |
 | `bytecode` | serialized bytecode |
-| native / LLVM / Wasm / JVM / CIL / .NET / eBPF | target object or module |
+| native / LLVM / Cranelift | target object or module |
 | AST target emit | evaluated canonical AST plus target printer output |
 
 Mode branching belongs at the output boundary. Typing, comptime, intrinsic

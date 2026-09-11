@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use fp_core::error::Error;
 use fp_core::mir;
-use fp_sql::extract_select_projection;
 
 use crate::error::optimization_error;
 
@@ -234,8 +233,18 @@ fn parse_sql_statement(statement: &str, passes: &mut Vec<MirPassName>) -> Result
         return Ok(());
     }
 
-    let selection = extract_select_projection(trimmed)
-        .map_err(|err| optimization_error(format!("unsupported MIR optimization query: {err}")))?;
+    let lower = trimmed.to_ascii_lowercase();
+    let selection = match lower.find("select") {
+        Some(select_pos) => {
+            let after_select = &trimmed[select_pos + "select".len()..];
+            let after_lower = &lower[select_pos + "select".len()..];
+            match after_lower.find("from") {
+                Some(from_pos) => after_select[..from_pos].trim(),
+                None => after_select.trim(),
+            }
+        }
+        None => trimmed,
+    };
 
     parse_pass_list(selection, passes)
 }
